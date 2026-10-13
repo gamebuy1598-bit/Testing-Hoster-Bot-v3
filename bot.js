@@ -1,1468 +1,1492 @@
-// ═══════════════════════════════════════════════════════════
-//  🤖 HOSTER BOT V3 — Ultimate Discord Bot
-//  AI Chat + Activity Tracking + Anti-Nuke + Full Mod
-// ═══════════════════════════════════════════════════════════
-
 require('dotenv').config();
 const {
-    Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder,
-    ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType,
-    ActivityType, Collection, SlashCommandBuilder, REST, Routes
+  Client, GatewayIntentBits, Partials, EmbedBuilder, PermissionsBitField,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder,
+  REST, Routes, ActivityType, ChannelType, ModalBuilder, TextInputBuilder,
+  TextInputStyle, StringSelectMenuBuilder, Collection
 } = require('discord.js');
+const Database = require('better-sqlite3');
+const path = require('path');
 
-// ═══════════════════════════════════════════════════════════
-//  CONFIG
-// ═══════════════════════════════════════════════════════════
-const CONFIG = {
-    token: process.env.DISCORD_TOKEN,
-    clientId: process.env.CLIENT_ID,
-    guildId: process.env.GUILD_ID,
-    botName: process.env.BOT_NAME || 'Hoster Bot V3',
-    status: process.env.BOT_STATUS || 'online',
-    activityType: process.env.BOT_ACTIVITY_TYPE || 'WATCHING',
-    activityText: process.env.BOT_ACTIVITY_TEXT || 'Over Your Server 🛡️',
-    activityUrl: process.env.BOT_ACTIVITY_URL || '',
-    footer: process.env.BOT_FOOTER || 'Hoster Bot V3 • Premium Protection',
-    colors: {
-        primary: parseInt(process.env.COLOR_PRIMARY || '5865F2', 16),
-        success: parseInt(process.env.COLOR_SUCCESS || '57F287', 16),
-        error: parseInt(process.env.COLOR_ERROR || 'ED4245', 16),
-        warning: parseInt(process.env.COLOR_WARNING || 'FEE75C', 16),
-        info: parseInt(process.env.COLOR_INFO || '00BFFF', 16),
-        premium: parseInt(process.env.COLOR_PREMIUM || 'FF69B4', 16),
+// ================== CONFIG ==================
+const env = process.env;
+const cfg = {
+  token: env.BOT_TOKEN,
+  appId: env.APPLICATION_ID,
+  name: env.BOT_NAME || 'Guardian Bot',
+  status: env.BOT_STATUS || 'Over Your Server 🛡️',
+  statusType: env.BOT_STATUS_TYPE || 'WATCHING',
+  activityUrl: env.BOT_ACTIVITY_URL || '',
+  devGuild: env.DEV_GUILD_ID || '',
+  owners: (env.BOT_OWNER_IDS || '').split(',').map(s => s.trim()).filter(Boolean),
+  brand: env.BRAND_NAME || 'Extreme Cloud',
+  footer: env.EMBED_FOOTER || 'Guardian Bot',
+  thumbnail: env.EMBED_THUMBNAIL_URL || '',
+  colors: {
+    primary: env.COLOR_PRIMARY || '#5865F2',
+    success: env.COLOR_SUCCESS || '#57F287',
+    error: env.COLOR_ERROR || '#ED4245',
+    warning: env.COLOR_WARNING || '#FEE75C',
+    info: env.COLOR_INFO || '#00BFFF',
+  },
+  antiSpam: {
+    enabled: env.ANTI_SPAM_ENABLED === 'true',
+    limit: +env.SPAM_MESSAGE_LIMIT || 5,
+    window: +env.SPAM_TIME_WINDOW || 5000,
+    timeout: +env.SPAM_TIMEOUT_DURATION || 600000,
+    escalate: env.SPAM_ESCALATE === 'true',
+    escalateThreshold: +env.SPAM_ESCALATE_THRESHOLD || 3,
+  },
+  antiNuke: {
+    enabled: env.ANTI_NUKE_ENABLED === 'true',
+    channelLimit: +env.NUKE_CHANNEL_LIMIT || 3,
+    roleLimit: +env.NUKE_ROLE_LIMIT || 3,
+    banLimit: +env.NUKE_BAN_LIMIT || 5,
+    kickLimit: +env.NUKE_KICK_LIMIT || 5,
+    window: +env.NUKE_TIME_WINDOW || 10000,
+  },
+  antiLink: {
+    enabled: env.ANTI_LINK_ENABLED === 'true',
+    antiInvite: env.ANTI_INVITE_ENABLED === 'true',
+    allowlist: (env.ANTI_LINK_ALLOWLIST || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+    allowedRoles: (env.ALLOWED_LINK_ROLES || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+    warnMsg: env.LINK_WARN_MESSAGE || '🚫 Links allowed nahi hai!',
+  },
+  antiCaps: {
+    enabled: env.ANTI_CAPS_ENABLED === 'true',
+    threshold: +env.ANTI_CAPS_THRESHOLD || 70,
+    minLength: +env.ANTI_CAPS_MIN_LENGTH || 10,
+  },
+  badWords: {
+    enabled: env.BAD_WORD_FILTER_ENABLED === 'true',
+    list: (env.BAD_WORDS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+    action: env.BAD_WORD_ACTION || 'delete',
+  },
+  raid: {
+    enabled: env.RAID_DETECTION_ENABLED === 'true',
+    threshold: +env.RAID_JOIN_THRESHOLD || 10,
+    window: +env.RAID_JOIN_WINDOW || 10000,
+    duration: +env.RAID_LOCKDOWN_DURATION || 300000,
+  },
+  xp: {
+    enabled: env.XP_ENABLED === 'true',
+    min: +env.XP_MIN_PER_MESSAGE || 15,
+    max: +env.XP_MAX_PER_MESSAGE || 25,
+    cooldown: +env.XP_COOLDOWN || 60000,
+    voicePerMin: +env.XP_VOICE_PER_MINUTE || 10,
+    antiFarm: env.XP_ANTI_FARM === 'true',
+    levelUpChannel: env.XP_LEVEL_UP_CHANNEL || '',
+    levelUpMessage: env.XP_LEVEL_UP_MESSAGE || '🎉 {user} reached level **{level}**!',
+    roleRewards: (env.XP_ROLE_REWARDS || '').split(',').map(s => {
+      const [lvl, role] = s.split(':');
+      return { level: +lvl, role: (role || '').trim() };
+    }).filter(r => r.level && r.role),
+    lbSize: +env.XP_LEADERBOARD_SIZE || 10,
+  },
+  tickets: {
+    enabled: env.TICKETS_ENABLED === 'true',
+    categories: {
+      general: env.TICKET_CATEGORY_GENERAL || 'General Support',
+      technical: env.TICKET_CATEGORY_TECHNICAL || 'Technical Support',
+      billing: env.TICKET_CATEGORY_BILLING || 'Billing Support',
+      other: env.TICKET_CATEGORY_OTHER || 'Other Requests',
     },
-    ai: {
-        enabled: process.env.AI_ENABLED === 'true',
-        apiKey: process.env.AI_API_KEY,
-        apiUrl: process.env.AI_API_URL || 'https://api.openai.com/v1/chat/completions',
-        model: process.env.AI_MODEL || 'gpt-4o-mini',
-        maxTokens: parseInt(process.env.AI_MAX_TOKENS || '500'),
-        temperature: parseFloat(process.env.AI_TEMPERATURE || '0.7'),
-        systemPrompt: process.env.AI_SYSTEM_PROMPT || 'You are Hoster Bot V3, a helpful Discord assistant.',
-        channelId: process.env.AI_CHANNEL_ID,
-        channelIds: (process.env.AI_CHANNEL_IDS || '').split(',').map((s) => s.trim()).filter(Boolean),
-        triggerPrefix: process.env.AI_TRIGGER_PREFIX || '!ai',
-        replyOnMention: process.env.AI_REPLY_ON_MENTION === 'true',
-        cooldown: parseInt(process.env.AI_COOLDOWN_SECONDS || '5'),
-    },
-    activity: {
-        enabled: process.env.ACTIVITY_TRACKING_ENABLED === 'true',
-        logChannel: process.env.ACTIVITY_LOG_CHANNEL_ID,
-        xpPerMessage: parseInt(process.env.ACTIVITY_XP_PER_MESSAGE || '5'),
-        xpPerVoiceMin: parseInt(process.env.ACTIVITY_XP_PER_VOICE_MINUTE || '2'),
-        xpCooldown: parseInt(process.env.ACTIVITY_XP_COOLDOWN || '10') * 1000,
-        levelupChannel: process.env.ACTIVITY_LEVELUP_CHANNEL_ID,
-        levelupEnabled: process.env.ACTIVITY_LEVELUP_ENABLED === 'true',
-        leaderboardSize: parseInt(process.env.ACTIVITY_LEADERBOARD_SIZE || '10'),
-    },
-    antispam: {
-        enabled: process.env.ANTISPAM_ENABLED === 'true',
-        limit: parseInt(process.env.ANTISPAM_MESSAGE_LIMIT || '5'),
-        window: parseInt(process.env.ANTISPAM_TIME_WINDOW || '5000'),
-        timeout: parseInt(process.env.ANTISPAM_TIMEOUT_DURATION || '600000'),
-        dupLimit: parseInt(process.env.ANTISPAM_DUPLICATE_LIMIT || '3'),
-        mentionLimit: parseInt(process.env.ANTISPAM_MENTION_LIMIT || '5'),
-    },
-    antinuke: {
-        enabled: process.env.ANTINUKE_ENABLED === 'true',
-        channelDelete: parseInt(process.env.ANTINUKE_CHANNEL_DELETE_LIMIT || '3'),
-        roleDelete: parseInt(process.env.ANTINUKE_ROLE_DELETE_LIMIT || '3'),
-        banLimit: parseInt(process.env.ANTINUKE_BAN_LIMIT || '3'),
-        kickLimit: parseInt(process.env.ANTINUKE_KICK_LIMIT || '3'),
-        webhookLimit: parseInt(process.env.ANTINUKE_WEBHOOK_LIMIT || '2'),
-        channelCreate: parseInt(process.env.ANTINUKE_CHANNEL_CREATE_LIMIT || '5'),
-        roleCreate: parseInt(process.env.ANTINUKE_ROLE_CREATE_LIMIT || '5'),
-        window: parseInt(process.env.ANTINUKE_TIME_WINDOW || '10000'),
-        punishment: process.env.ANTINUKE_PUNISHMENT || 'ban',
-    },
-    link: {
-        enabled: process.env.LINK_PROTECTION_ENABLED === 'true',
-        action: process.env.LINK_ACTION || 'delete',
-        inviteEnabled: process.env.INVITE_PROTECTION_ENABLED === 'true',
-        allowed: (process.env.ALLOWED_LINKS || '').split(',').filter(Boolean),
-    },
-    antiCaps: {
-        enabled: process.env.ANTI_CAPS_ENABLED === 'true',
-        percent: parseInt(process.env.ANTI_CAPS_PERCENT || '70'),
-    },
-    badWords: (process.env.BAD_WORDS || '').split(',').filter(Boolean).map((w) => w.trim().toLowerCase()),
-    channels: {
-        log: process.env.LOG_CHANNEL_ID,
-        modLog: process.env.MOD_LOG_CHANNEL_ID,
-        welcome: process.env.WELCOME_CHANNEL_ID,
-        goodbye: process.env.GOODBYE_CHANNEL_ID,
-        ticketCategory: process.env.TICKET_CATEGORY_ID,
-        ticketLog: process.env.TICKET_LOG_CHANNEL_ID,
-        verify: process.env.VERIFY_CHANNEL_ID,
-        stats: process.env.SERVER_STATS_CHANNEL_ID,
-    },
-    roles: {
-        verify: process.env.VERIFY_ROLE_ID,
-        auto: process.env.AUTO_ROLE_ID,
-    },
-    features: {
-        welcome: process.env.WELCOME_ENABLED === 'true',
-        goodbye: process.env.GOODBYE_ENABLED === 'true',
-        autoRole: process.env.AUTO_ROLE_ENABLED === 'true',
-        verify: process.env.VERIFY_ENABLED === 'true',
-        ticket: process.env.TICKET_ENABLED === 'true',
-        giveaway: process.env.GIVEAWAY_ENABLED === 'true',
-        logging: process.env.LOGGING_ENABLED === 'true',
-    },
-    levelRoles: (process.env.LEVEL_ROLES || '').split(',').filter(Boolean).map((pair) => {
-        const [lvl, roleId] = pair.split(':');
-        return { level: parseInt(lvl), roleId };
-    }),
-    prefix: process.env.PREFIX || '!',
-    maxWarns: parseInt(process.env.MAX_WARNS || '5'),
+    staffRoles: (env.TICKET_STAFF_ROLES || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+    logChannel: env.TICKET_LOG_CHANNEL || 'ticket-logs',
+    preventDuplicate: env.TICKET_PREVENT_DUPLICATE === 'true',
+    transcript: env.TICKET_TRANSCRIPT_ENABLED === 'true',
+    panelChannel: env.TICKET_PANEL_CHANNEL || '',
+    maxOpen: +env.TICKET_MAX_OPEN_PER_USER || 1,
+  },
+  giveaway: {
+    enabled: env.GIVEAWAY_ENABLED === 'true',
+    defaultDuration: +env.GIVEAWAY_DEFAULT_DURATION || 3600000,
+    defaultWinners: +env.GIVEAWAY_DEFAULT_WINNERS || 1,
+    logChannel: env.GIVEAWAY_LOG_CHANNEL || 'giveaway-logs',
+    requireRole: env.GIVEAWAY_REQUIRE_ROLE || '',
+    minAge: +env.GIVEAWAY_MIN_ACCOUNT_AGE || 7,
+  },
+  welcome: {
+    enabled: env.WELCOME_ENABLED === 'true',
+    channel: env.WELCOME_CHANNEL || 'welcome',
+    message: env.WELCOME_MESSAGE || 'Welcome {user} to **{server}**!',
+    image: env.WELCOME_IMAGE_URL || '',
+  },
+  goodbye: {
+    enabled: env.GOODBYE_ENABLED === 'true',
+    channel: env.GOODBYE_CHANNEL || 'goodbye',
+    message: env.GOODBYE_MESSAGE || '{user} left the server.',
+    image: env.GOODBYE_IMAGE_URL || '',
+  },
+  verify: {
+    enabled: env.VERIFICATION_ENABLED === 'true',
+    channel: env.VERIFICATION_CHANNEL || 'verify',
+    role: env.VERIFICATION_ROLE || 'Verified',
+    unverifiedRole: env.UNVERIFIED_ROLE || 'Unverified',
+    message: env.VERIFICATION_MESSAGE || 'Click below to verify!',
+    autoRoleEnabled: env.AUTO_ROLE_ENABLED === 'true',
+    autoRoles: (env.AUTO_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean),
+  },
+  stats: {
+    enabled: env.STATS_ENABLED === 'true',
+    members: env.STATS_CHANNEL_MEMBERS || '📊 Members: {count}',
+    humans: env.STATS_CHANNEL_HUMANS || '👥 Humans: {count}',
+    bots: env.STATS_CHANNEL_BOTS || '🤖 Bots: {count}',
+    interval: +env.STATS_UPDATE_INTERVAL || 600000,
+  },
+  logs: {
+    enabled: env.LOG_ENABLED === 'true',
+    channel: env.LOG_CHANNEL || 'bot-logs',
+    modChannel: env.MOD_LOG_CHANNEL || 'mod-logs',
+    memberJoin: env.LOG_MEMBER_JOIN === 'true',
+    memberLeave: env.LOG_MEMBER_LEAVE === 'true',
+    msgEdit: env.LOG_MESSAGE_EDIT === 'true',
+    msgDelete: env.LOG_MESSAGE_DELETE === 'true',
+    voice: env.LOG_VOICE === 'true',
+    roleChanges: env.LOG_ROLE_CHANGES === 'true',
+    channelChanges: env.LOG_CHANNEL_CHANGES === 'true',
+    tickets: env.LOG_TICKETS === 'true',
+    giveaways: env.LOG_GIVEAWAYS === 'true',
+    verification: env.LOG_VERIFICATION === 'true',
+    security: env.LOG_SECURITY === 'true',
+  },
+  dbPath: env.DATABASE_PATH || './guardian.db',
 };
 
-// ═══════════════════════════════════════════════════════════
-//  CLIENT
-// ═══════════════════════════════════════════════════════════
+// ================== DATABASE ==================
+const db = new Database(cfg.dbPath);
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS xp (
+    guild_id TEXT, user_id TEXT,
+    xp INTEGER DEFAULT 0, level INTEGER DEFAULT 0,
+    last_message INTEGER DEFAULT 0,
+    voice_minutes INTEGER DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id)
+  );
+  CREATE TABLE IF NOT EXISTS warnings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT, user_id TEXT, mod_id TEXT,
+    reason TEXT, timestamp INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT, case_number INTEGER, action TEXT,
+    user_id TEXT, mod_id TEXT, reason TEXT,
+    duration INTEGER, timestamp INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT, channel_id TEXT, user_id TEXT,
+    type TEXT, status TEXT DEFAULT 'open',
+    claimed_by TEXT, reason TEXT,
+    created_at INTEGER, closed_at INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS giveaways (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT, channel_id TEXT, message_id TEXT,
+    host_id TEXT, prize TEXT, winners INTEGER,
+    ends_at INTEGER, ended INTEGER DEFAULT 0,
+    requirements TEXT, entries TEXT DEFAULT '[]',
+    reroll_history TEXT DEFAULT '[]'
+  );
+  CREATE TABLE IF NOT EXISTS modstats (
+    guild_id TEXT, mod_id TEXT,
+    actions INTEGER DEFAULT 0,
+    PRIMARY KEY (guild_id, mod_id)
+  );
+  CREATE TABLE IF NOT EXISTS verify_codes (
+    guild_id TEXT, user_id TEXT, code TEXT,
+    timestamp INTEGER,
+    PRIMARY KEY (guild_id, user_id)
+  );
+`);
+
+// Prepared statements
+const S = {
+  getXP: db.prepare('SELECT * FROM xp WHERE guild_id=? AND user_id=?'),
+  upsertXP: db.prepare(`INSERT INTO xp (guild_id, user_id, xp, level, last_message, voice_minutes)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+      xp=excluded.xp, level=excluded.level,
+      last_message=excluded.last_message, voice_minutes=excluded.voice_minutes`),
+  topXP: db.prepare('SELECT * FROM xp WHERE guild_id=? ORDER BY xp DESC LIMIT ?'),
+  rank: db.prepare('SELECT COUNT(*) AS r FROM xp WHERE guild_id=? AND xp > ?'),
+  addWarn: db.prepare('INSERT INTO warnings (guild_id, user_id, mod_id, reason, timestamp) VALUES (?,?,?,?,?)'),
+  getWarns: db.prepare('SELECT * FROM warnings WHERE guild_id=? AND user_id=? ORDER BY timestamp DESC'),
+  clearWarns: db.prepare('DELETE FROM warnings WHERE guild_id=? AND user_id=?'),
+  addCase: db.prepare(`INSERT INTO cases (guild_id, case_number, action, user_id, mod_id, reason, duration, timestamp)
+    VALUES (?,?,?,?,?,?,?,?)`),
+  getCase: db.prepare('SELECT * FROM cases WHERE guild_id=? AND case_number=?'),
+  lastCaseNum: db.prepare('SELECT MAX(case_number) AS m FROM cases WHERE guild_id=?'),
+  addModAction: db.prepare(`INSERT INTO modstats (guild_id, mod_id, actions) VALUES (?,?,1)
+    ON CONFLICT(guild_id, mod_id) DO UPDATE SET actions=actions+1`),
+  getModStats: db.prepare('SELECT * FROM modstats WHERE guild_id=? ORDER BY actions DESC LIMIT 10'),
+  createTicket: db.prepare(`INSERT INTO tickets (guild_id, channel_id, user_id, type, status, created_at)
+    VALUES (?,?,?,?, 'open', ?)`),
+  getTicketByChannel: db.prepare('SELECT * FROM tickets WHERE channel_id=?'),
+  getOpenTickets: db.prepare("SELECT * FROM tickets WHERE guild_id=? AND user_id=? AND status='open'"),
+  closeTicket: db.prepare("UPDATE tickets SET status='closed', closed_at=?, reason=? WHERE channel_id=?"),
+  claimTicket: db.prepare('UPDATE tickets SET claimed_by=? WHERE channel_id=?'),
+  reopenTicket: db.prepare("UPDATE tickets SET status='open', closed_at=NULL WHERE channel_id=?"),
+  createGiveaway: db.prepare(`INSERT INTO giveaways (guild_id, channel_id, message_id, host_id, prize, winners, ends_at, requirements, entries)
+    VALUES (?,?,?,?,?,?,?,?, '[]')`),
+  getGiveaway: db.prepare('SELECT * FROM giveaways WHERE message_id=?'),
+  getActiveGiveaways: db.prepare('SELECT * FROM giveaways WHERE ended=0'),
+  updateGiveawayEntries: db.prepare('UPDATE giveaways SET entries=? WHERE message_id=?'),
+  endGiveaway: db.prepare('UPDATE giveaways SET ended=1 WHERE message_id=?'),
+  updateReroll: db.prepare('UPDATE giveaways SET reroll_history=? WHERE message_id=?'),
+  setVerifyCode: db.prepare('INSERT OR REPLACE INTO verify_codes (guild_id, user_id, code, timestamp) VALUES (?,?,?,?)'),
+  getVerifyCode: db.prepare('SELECT * FROM verify_codes WHERE guild_id=? AND user_id=?'),
+  delVerifyCode: db.prepare('DELETE FROM verify_codes WHERE guild_id=? AND user_id=?'),
+};
+
+// ================== CLIENT ==================
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildModeration,
-        GatewayIntentBits.GuildWebhooks,
-        GatewayIntentBits.GuildInvites,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.DirectMessages,
-    ],
-    partials: [Partials.Message, Partials.Channel, Partials.GuildMember, Partials.User],
+  intents: [
+    GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildBans,
+    GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildInvites,
+    GatewayIntentBits.GuildPresences,
+  ],
+  partials: [Partials.Message, Partials.Channel, Partials.GuildMember, Partials.User],
 });
 
-// ═══════════════════════════════════════════════════════════
-//  CACHES & STORAGE
-// ═══════════════════════════════════════════════════════════
-const spamCache = new Collection();
-const nukeCache = new Collection();
-const snipes = new Collection();
-const warns = new Collection();
-const giveaways = new Collection();
-const tickets = new Collection();
-const aiCooldowns = new Collection();
-const aiHistory = new Collection();
-const voiceSessions = new Collection();
+client.commands = new Collection();
 
-// Activity storage
-const userXP = new Collection();         // key: guildId-userId -> { xp, level, messages, voiceMinutes, lastXp }
-const levelLeaderboards = new Collection();
+// ================== HELPERS ==================
+const C = cfg.colors;
 
-// ═══════════════════════════════════════════════════════════
-//  UTILITIES
-// ═══════════════════════════════════════════════════════════
-function createEmbed(type = 'primary', title, description) {
-    return new EmbedBuilder()
-        .setColor(CONFIG.colors[type] || CONFIG.colors.primary)
-        .setTitle(title || null)
-        .setDescription(description || null)
-        .setFooter({ text: CONFIG.footer, iconURL: client.user?.displayAvatarURL() })
-        .setTimestamp();
+function em(title, desc, color = C.primary, extra = {}) {
+  const e = new EmbedBuilder().setColor(color);
+  if (title) e.setTitle(title);
+  if (desc) e.setDescription(desc);
+  if (cfg.footer) e.setFooter({ text: cfg.footer, iconURL: client.user?.displayAvatarURL() });
+  e.setTimestamp();
+  return Object.assign(e, extra);
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function bar(cur, total, size = 12) {
+  const f = Math.max(0, Math.min(size, Math.round((cur / Math.max(1, total)) * size)));
+  return '█'.repeat(f) + '░'.repeat(size - f);
+}
+function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+function xpNeeded(level) { return 5 * level * level + 50 * level + 100; }
+function totalXPFor(level) { let t = 0; for (let i = 0; i < level; i++) t += xpNeeded(i); return t; }
+
+async function findChannel(guild, nameOrId) {
+  if (!nameOrId) return null;
+  return guild.channels.cache.get(nameOrId) ||
+    guild.channels.cache.find(c => c.name === nameOrId && c.type === ChannelType.GuildText);
+}
+async function sendLog(guild, e, modLog = false) {
+  if (!cfg.logs.enabled) return;
+  const ch = await findChannel(guild, modLog ? cfg.logs.modChannel : cfg.logs.channel);
+  if (ch) ch.send({ embeds: [e] }).catch(() => {});
 }
 
-function progressBar(current, total, size = 15) {
-    const filled = Math.max(0, Math.min(size, Math.round((current / total) * size)));
-    return '█'.repeat(filled) + '░'.repeat(size - filled);
+function hasRole(member, roles) {
+  if (!member) return false;
+  if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
+  return member.roles.cache.some(r => roles.includes(r.name.toLowerCase()));
+}
+function isStaff(member) { return hasRole(member, cfg.tickets.staffRoles); }
+
+function containsLink(text) {
+  return /(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi.test(text);
+}
+function containsInvite(text) {
+  return /(discord\.(gg|io|me|li)\/.+)|(discordapp\.com\/invite\/.+)|(discord\.com\/invite\/.+)/gi.test(text);
+}
+function extractUrls(text) {
+  return text.match(/(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi) || [];
+}
+function capsRatio(text) {
+  const letters = text.replace(/[^a-zA-Z]/g, '');
+  if (!letters.length) return 0;
+  const caps = letters.replace(/[^A-Z]/g, '').length;
+  return Math.round((caps / letters.length) * 100);
 }
 
-// XP required for next level (MEE6-like curve)
-function xpForLevel(level) {
-    return 5 * (level ** 2) + 50 * level + 100;
+async function recordCase(guild, action, userId, modId, reason, duration = null) {
+  const last = S.lastCaseNum.get(guild.id)?.m || 0;
+  const num = last + 1;
+  S.addCase.run(guild.id, num, action, userId, modId, reason || '', duration, Date.now());
+  return num;
 }
 
-async function sendLog(guild, embed, modLog = false) {
-    if (!CONFIG.features.logging) return;
-    const channelId = modLog ? (CONFIG.channels.modLog || CONFIG.channels.log) : CONFIG.channels.log;
-    if (!channelId) return;
-    const ch = guild.channels.cache.get(channelId);
-    if (ch) ch.send({ embeds: [embed] }).catch(() => {});
-}
-
-async function safeSend(channel, content) {
-    try { return await channel.send(content); } catch { return null; }
-}
-
-// ═══════════════════════════════════════════════════════════
-//  ACTIVITY TRACKING HELPERS
-// ═══════════════════════════════════════════════════════════
-function getActivity(guildId, userId) {
-    const key = `${guildId}-${userId}`;
-    let data = userXP.get(key);
-    if (!data) {
-        data = { xp: 0, level: 0, totalXp: 0, messages: 0, voiceMinutes: 0, lastXp: 0 };
-        userXP.set(key, data);
-    }
-    return data;
-}
-
-async function giveXP(guild, member, amount) {
-    if (!CONFIG.activity.enabled) return;
-    const data = getActivity(guild.id, member.id);
-    const now = Date.now();
-    if (now - data.lastXp < CONFIG.activity.xpCooldown) return;
-    data.lastXp = now;
-    data.xp += amount;
-    data.totalXp += amount;
-
-    let leveledUp = false;
-    while (data.xp >= xpForLevel(data.level)) {
-        data.xp -= xpForLevel(data.level);
-        data.level++;
-        leveledUp = true;
-    }
-
-    if (leveledUp) {
-        // Level-up notification
-        if (CONFIG.activity.levelupEnabled) {
-            const ch = CONFIG.activity.levelupChannel
-                ? guild.channels.cache.get(CONFIG.activity.levelupChannel)
-                : null;
-            if (ch) {
-                ch.send({ embeds: [createEmbed('success', '🎉 Level Up!',
-                    `Congratulations ${member}! You reached **Level ${data.level}** 🚀`)] }).catch(() => {});
-            }
-        }
-
-        // Level role rewards
-        for (const lr of CONFIG.levelRoles) {
-            if (data.level >= lr.level) {
-                const role = guild.roles.cache.get(lr.roleId);
-                if (role && !member.roles.cache.has(role.id)) {
-                    member.roles.add(role, `Level ${lr.level} reward`).catch(() => {});
-                }
-            }
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════
-//  AI CHAT
-// ═══════════════════════════════════════════════════════════
-async function askAI(userId, userName, prompt) {
-    if (!CONFIG.ai.enabled || !CONFIG.ai.apiKey) {
-        return '❌ AI is not configured properly. Please check the `.env` file.';
-    }
-    try {
-        let history = aiHistory.get(userId) || [];
-        history.push({ role: 'user', content: prompt });
-        if (history.length > 20) history = history.slice(-20);
-
-        const messages = [
-            { role: 'system', content: CONFIG.ai.systemPrompt },
-            ...history,
-        ];
-
-        const res = await fetch(CONFIG.ai.apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${CONFIG.ai.apiKey}`,
-            },
-            body: JSON.stringify({
-                model: CONFIG.ai.model,
-                messages,
-                max_tokens: CONFIG.ai.maxTokens,
-                temperature: CONFIG.ai.temperature,
-            }),
-        });
-
-        if (!res.ok) {
-            const txt = await res.text();
-            console.error('AI API error:', res.status, txt);
-            return `❌ AI error (${res.status}). Please try again later.`;
-        }
-
-        const json = await res.json();
-        const reply = json?.choices?.[0]?.message?.content?.trim() || 'No response.';
-        history.push({ role: 'assistant', content: reply });
-        aiHistory.set(userId, history);
-        return reply;
-    } catch (e) {
-        console.error('AI fetch error:', e);
-        return '❌ AI connection failed.';
-    }
-}
-
-// ═══════════════════════════════════════════════════════════
-//  ANTI-NUKE
-// ═══════════════════════════════════════════════════════════
-function trackNuke(guildId, userId, action) {
-    const key = `${guildId}-${userId}-${action}`;
-    const now = Date.now();
-    let data = nukeCache.get(key) || [];
-    data = data.filter((t) => now - t < CONFIG.antinuke.window);
-    data.push(now);
-    nukeCache.set(key, data);
-    return data.length;
-}
-
-async function handleNuke(guild, userId, action, limit, reason) {
-    const count = trackNuke(guild.id, userId, action);
-    if (count < limit) return;
-    if (userId === guild.ownerId || userId === client.user.id) return;
-
-    try {
-        const member = await guild.members.fetch(userId).catch(() => null);
-        if (!member) return;
-
-        if (CONFIG.antinuke.punishment === 'ban') {
-            await member.roles.set([], 'Anti-Nuke').catch(() => {});
-            await guild.members.ban(userId, { reason: `Anti-Nuke: ${reason}`, deleteMessageSeconds: 3600 }).catch(() => {});
-        } else if (CONFIG.antinuke.punishment === 'kick') {
-            await member.kick(`Anti-Nuke: ${reason}`).catch(() => {});
-        } else {
-            await member.timeout(86400000, `Anti-Nuke: ${reason}`).catch(() => {});
-        }
-
-        await sendLog(guild, createEmbed('error', '🚨 ANTI-NUKE TRIGGERED',
-            `**User:** <@${userId}> (\`${userId}\`)\n**Action:** ${reason}\n**Punishment:** ${CONFIG.antinuke.punishment.toUpperCase()}`), true);
-    } catch {}
-}
-
-// ═══════════════════════════════════════════════════════════
-//  READY
-// ═══════════════════════════════════════════════════════════
+// ================== READY ==================
 client.once('ready', async () => {
-    console.log(`
-╔══════════════════════════════════════════════════╗
-║  ✅ ${CONFIG.botName} is ONLINE
-║  🤖 ${client.user.tag}
-║  🏠 Servers: ${client.guilds.cache.size}
-║  🤖 AI Chat: ${CONFIG.ai.enabled ? 'ON' : 'OFF'}
-║  📊 Activity: ${CONFIG.activity.enabled ? 'ON' : 'OFF'}
-║  🛡️  Anti-Nuke: ${CONFIG.antinuke.enabled ? 'ON' : 'OFF'}
-╚══════════════════════════════════════════════════╝
-    `);
+  console.log(`\n🛡️  ${cfg.name} online → ${client.user.tag}`);
+  const tMap = { PLAYING: ActivityType.Playing, WATCHING: ActivityType.Watching,
+    LISTENING: ActivityType.Listening, COMPETING: ActivityType.Competing, STREAMING: ActivityType.Streaming };
+  client.user.setPresence({
+    activities: [{ name: cfg.status, type: tMap[cfg.statusType] || ActivityType.Watching,
+      url: cfg.statusType === 'STREAMING' ? cfg.activityUrl : undefined }],
+    status: 'online',
+  });
 
-    const types = { PLAYING: ActivityType.Playing, WATCHING: ActivityType.Watching, LISTENING: ActivityType.Listening, COMPETING: ActivityType.Competing, STREAMING: ActivityType.Streaming };
-    const opts = { name: CONFIG.activityText, type: types[CONFIG.activityType] || ActivityType.Watching };
-    if (CONFIG.activityType === 'STREAMING' && CONFIG.activityUrl) opts.url = CONFIG.activityUrl;
-    client.user.setPresence({ status: CONFIG.status, activities: [opts] });
-
-    await registerCommands();
-
-    // Server stats channel
-    if (CONFIG.channels.stats) {
-        setInterval(async () => {
-            const ch = client.channels.cache.get(CONFIG.channels.stats);
-            if (ch && ch.guild) ch.setName(`👥 Members: ${ch.guild.memberCount}`).catch(() => {});
-        }, 60000);
-    }
-
-    // Giveaway checker
-    setInterval(checkGiveaways, 5000);
-
-    // Voice XP tracker
-    if (CONFIG.activity.enabled) {
-        setInterval(() => {
-            for (const guild of client.guilds.cache.values()) {
-                for (const channel of guild.channels.cache.values()) {
-                    if (channel.type !== ChannelType.GuildVoice) continue;
-                    if (!channel.members || channel.members.size === 0) continue;
-                    const humans = channel.members.filter((m) => !m.user.bot);
-                    if (humans.size < 1) continue;
-                    for (const m of humans.values()) {
-                        if (m.voice?.deaf || m.voice?.mute) continue;
-                        const data = getActivity(guild.id, m.id);
-                        data.voiceMinutes += 1;
-                        data.xp += CONFIG.activity.xpPerVoiceMin;
-                        data.totalXp += CONFIG.activity.xpPerVoiceMin;
-                        let leveledUp = false;
-                        while (data.xp >= xpForLevel(data.level)) {
-                            data.xp -= xpForLevel(data.level);
-                            data.level++;
-                            leveledUp = true;
-                        }
-                        if (leveledUp && CONFIG.activity.levelupEnabled && CONFIG.activity.levelupChannel) {
-                            const ch = guild.channels.cache.get(CONFIG.activity.levelupChannel);
-                            ch?.send({ embeds: [createEmbed('success', '🎉 Voice Level Up!', `${m} reached **Level ${data.level}** 🎧`)] }).catch(() => {});
-                        }
-                    }
-                }
-            }
-        }, 60000);
-    }
+  await registerCommands();
+  await restoreGiveaways();
+  if (cfg.stats.enabled) startStatsLoop();
+  console.log('✅ Ready');
 });
 
-// ═══════════════════════════════════════════════════════════
-//  SLASH COMMANDS REGISTRATION
-// ═══════════════════════════════════════════════════════════
+// ================== SLASH COMMANDS ==================
 async function registerCommands() {
-    const cmds = [
-        // Basic
-        new SlashCommandBuilder().setName('ping').setDescription('Bot latency'),
-        new SlashCommandBuilder().setName('help').setDescription('Show all commands'),
-        new SlashCommandBuilder().setName('serverinfo').setDescription('Server info'),
-        new SlashCommandBuilder().setName('userinfo').setDescription('User info')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(false)),
-        new SlashCommandBuilder().setName('avatar').setDescription('User avatar')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(false)),
-        new SlashCommandBuilder().setName('botinfo').setDescription('Bot statistics'),
+  const cmds = [
+    // Moderation
+    new SlashCommandBuilder().setName('ban').setDescription('Ban a user')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+      .addStringOption(o => o.setName('reason').setDescription('Reason'))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers),
+    new SlashCommandBuilder().setName('unban').setDescription('Unban a user')
+      .addStringOption(o => o.setName('userid').setDescription('User ID').setRequired(true))
+      .addStringOption(o => o.setName('reason').setDescription('Reason'))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers),
+    new SlashCommandBuilder().setName('kick').setDescription('Kick a user')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+      .addStringOption(o => o.setName('reason').setDescription('Reason'))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.KickMembers),
+    new SlashCommandBuilder().setName('timeout').setDescription('Timeout a user')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+      .addIntegerOption(o => o.setName('minutes').setDescription('Minutes').setRequired(true))
+      .addStringOption(o => o.setName('reason').setDescription('Reason'))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers),
+    new SlashCommandBuilder().setName('untimeout').setDescription('Remove timeout')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers),
+    new SlashCommandBuilder().setName('warn').setDescription('Warn a user')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+      .addStringOption(o => o.setName('reason').setDescription('Reason'))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers),
+    new SlashCommandBuilder().setName('warnings').setDescription('View warnings')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true)),
+    new SlashCommandBuilder().setName('clear').setDescription('Clear messages')
+      .addIntegerOption(o => o.setName('amount').setDescription('1-100').setRequired(true))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageMessages),
+    new SlashCommandBuilder().setName('purge-user').setDescription('Purge a user\'s messages')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+      .addIntegerOption(o => o.setName('amount').setDescription('1-100').setRequired(true))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageMessages),
+    new SlashCommandBuilder().setName('slowmode').setDescription('Set slowmode')
+      .addIntegerOption(o => o.setName('seconds').setDescription('Seconds').setRequired(true))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageChannels),
+    new SlashCommandBuilder().setName('lock').setDescription('Lock channel')
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageChannels),
+    new SlashCommandBuilder().setName('unlock').setDescription('Unlock channel')
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageChannels),
+    new SlashCommandBuilder().setName('hide').setDescription('Hide channel')
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageChannels),
+    new SlashCommandBuilder().setName('unhide').setDescription('Unhide channel')
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageChannels),
+    new SlashCommandBuilder().setName('nick').setDescription('Change nickname')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+      .addStringOption(o => o.setName('name').setDescription('New nickname'))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageNicknames),
+    new SlashCommandBuilder().setName('role').setDescription('Add role to user')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+      .addRoleOption(o => o.setName('role').setDescription('Role').setRequired(true))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageRoles),
+    new SlashCommandBuilder().setName('unrole').setDescription('Remove role from user')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+      .addRoleOption(o => o.setName('role').setDescription('Role').setRequired(true))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageRoles),
+    new SlashCommandBuilder().setName('modstats').setDescription('View moderator stats'),
+    new SlashCommandBuilder().setName('case').setDescription('View a moderation case')
+      .addIntegerOption(o => o.setName('number').setDescription('Case number').setRequired(true)),
 
-        // Moderation
-        new SlashCommandBuilder().setName('kick').setDescription('Kick member')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true))
-            .addStringOption((o) => o.setName('reason').setDescription('Reason').setRequired(false)),
-        new SlashCommandBuilder().setName('ban').setDescription('Ban member')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true))
-            .addStringOption((o) => o.setName('reason').setDescription('Reason').setRequired(false))
-            .addIntegerOption((o) => o.setName('delete_days').setDescription('Delete msgs days').setMinValue(0).setMaxValue(7).setRequired(false)),
-        new SlashCommandBuilder().setName('unban').setDescription('Unban user')
-            .addStringOption((o) => o.setName('user_id').setDescription('User ID').setRequired(true)),
-        new SlashCommandBuilder().setName('timeout').setDescription('Timeout member')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true))
-            .addIntegerOption((o) => o.setName('minutes').setDescription('Minutes').setRequired(true))
-            .addStringOption((o) => o.setName('reason').setDescription('Reason').setRequired(false)),
-        new SlashCommandBuilder().setName('untimeout').setDescription('Remove timeout')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true)),
-        new SlashCommandBuilder().setName('warn').setDescription('Warn member')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true))
-            .addStringOption((o) => o.setName('reason').setDescription('Reason').setRequired(true)),
-        new SlashCommandBuilder().setName('warnings').setDescription('Show warnings')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true)),
-        new SlashCommandBuilder().setName('clearwarns').setDescription('Clear warnings')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true)),
-        new SlashCommandBuilder().setName('purge').setDescription('Bulk delete messages')
-            .addIntegerOption((o) => o.setName('amount').setDescription('1-100').setRequired(true).setMinValue(1).setMaxValue(100)),
-        new SlashCommandBuilder().setName('slowmode').setDescription('Set slowmode')
-            .addIntegerOption((o) => o.setName('seconds').setDescription('Seconds').setRequired(true).setMinValue(0).setMaxValue(21600)),
-        new SlashCommandBuilder().setName('lock').setDescription('Lock channel'),
-        new SlashCommandBuilder().setName('unlock').setDescription('Unlock channel'),
-        new SlashCommandBuilder().setName('nickname').setDescription('Set nickname')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true))
-            .addStringOption((o) => o.setName('nickname').setDescription('Nickname').setRequired(false)),
-        new SlashCommandBuilder().setName('role').setDescription('Add/remove role')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true))
-            .addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true))
-            .addStringOption((o) => o.setName('action').setDescription('add/remove').setRequired(true)
-                .addChoices({ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' })),
-        new SlashCommandBuilder().setName('snipe').setDescription('Show last deleted message'),
-        new SlashCommandBuilder().setName('nuke').setDescription('Clone & delete channel'),
+    // Info
+    new SlashCommandBuilder().setName('help').setDescription('Show all commands'),
+    new SlashCommandBuilder().setName('ping').setDescription('Bot latency'),
+    new SlashCommandBuilder().setName('botinfo').setDescription('Bot info'),
+    new SlashCommandBuilder().setName('serverinfo').setDescription('Server info'),
+    new SlashCommandBuilder().setName('userinfo').setDescription('User info')
+      .addUserOption(o => o.setName('user').setDescription('User')),
+    new SlashCommandBuilder().setName('avatar').setDescription('User avatar')
+      .addUserOption(o => o.setName('user').setDescription('User')),
+    new SlashCommandBuilder().setName('banner').setDescription('User banner')
+      .addUserOption(o => o.setName('user').setDescription('User')),
+    new SlashCommandBuilder().setName('roleinfo').setDescription('Role info')
+      .addRoleOption(o => o.setName('role').setDescription('Role').setRequired(true)),
+    new SlashCommandBuilder().setName('channelinfo').setDescription('Channel info')
+      .addChannelOption(o => o.setName('channel').setDescription('Channel')),
+    new SlashCommandBuilder().setName('invite').setDescription('Bot invite link'),
+    new SlashCommandBuilder().setName('uptime').setDescription('Bot uptime'),
+    new SlashCommandBuilder().setName('stats').setDescription('Server statistics'),
 
-        // Anti toggles
-        new SlashCommandBuilder().setName('antinuke').setDescription('Toggle anti-nuke')
-            .addStringOption((o) => o.setName('state').setDescription('on/off').setRequired(true)
-                .addChoices({ name: 'on', value: 'on' }, { name: 'off', value: 'off' })),
-        new SlashCommandBuilder().setName('antispam').setDescription('Toggle anti-spam')
-            .addStringOption((o) => o.setName('state').setDescription('on/off').setRequired(true)
-                .addChoices({ name: 'on', value: 'on' }, { name: 'off', value: 'off' })),
-        new SlashCommandBuilder().setName('antilink').setDescription('Toggle anti-link')
-            .addStringOption((o) => o.setName('state').setDescription('on/off').setRequired(true)
-                .addChoices({ name: 'on', value: 'on' }, { name: 'off', value: 'off' })),
-        new SlashCommandBuilder().setName('security').setDescription('Show security status'),
+    // XP
+    new SlashCommandBuilder().setName('rank').setDescription('View your rank')
+      .addUserOption(o => o.setName('user').setDescription('User')),
+    new SlashCommandBuilder().setName('leaderboard').setDescription('XP leaderboard'),
 
-        // Tickets
-        new SlashCommandBuilder().setName('ticket-panel').setDescription('Send ticket panel'),
-        new SlashCommandBuilder().setName('ticket-close').setDescription('Close current ticket'),
+    // Tickets
+    new SlashCommandBuilder().setName('ticket-panel').setDescription('Send ticket panel')
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild),
+    new SlashCommandBuilder().setName('ticket-stats').setDescription('Ticket statistics'),
 
-        // Giveaway
-        new SlashCommandBuilder().setName('giveaway').setDescription('Start a giveaway')
-            .addStringOption((o) => o.setName('prize').setDescription('Prize').setRequired(true))
-            .addIntegerOption((o) => o.setName('minutes').setDescription('Minutes').setRequired(true).setMinValue(1))
-            .addIntegerOption((o) => o.setName('winners').setDescription('Winners').setRequired(false).setMinValue(1).setMaxValue(20)),
-        new SlashCommandBuilder().setName('reroll').setDescription('Reroll giveaway')
-            .addStringOption((o) => o.setName('message_id').setDescription('Message ID').setRequired(true)),
-        new SlashCommandBuilder().setName('end-giveaway').setDescription('End giveaway')
-            .addStringOption((o) => o.setName('message_id').setDescription('Message ID').setRequired(true)),
+    // Giveaways
+    new SlashCommandBuilder().setName('giveaway').setDescription('Giveaway manager')
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
+      .addSubcommand(s => s.setName('create').setDescription('Create giveaway')
+        .addStringOption(o => o.setName('prize').setDescription('Prize').setRequired(true))
+        .addIntegerOption(o => o.setName('minutes').setDescription('Duration (min)').setRequired(true))
+        .addIntegerOption(o => o.setName('winners').setDescription('Winner count')))
+      .addSubcommand(s => s.setName('end').setDescription('End giveaway')
+        .addStringOption(o => o.setName('message_id').setDescription('Message ID').setRequired(true)))
+      .addSubcommand(s => s.setName('reroll').setDescription('Reroll winner')
+        .addStringOption(o => o.setName('message_id').setDescription('Message ID').setRequired(true)))
+      .addSubcommand(s => s.setName('list').setDescription('List active giveaways')),
 
-        // Utilities
-        new SlashCommandBuilder().setName('poll').setDescription('Create poll')
-            .addStringOption((o) => o.setName('question').setDescription('Question').setRequired(true))
-            .addStringOption((o) => o.setName('options').setDescription('Options separated by |').setRequired(false)),
-        new SlashCommandBuilder().setName('embed').setDescription('Custom embed')
-            .addStringOption((o) => o.setName('title').setDescription('Title').setRequired(true))
-            .addStringOption((o) => o.setName('description').setDescription('Description').setRequired(true))
-            .addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(false)),
-        new SlashCommandBuilder().setName('say').setDescription('Bot says something')
-            .addStringOption((o) => o.setName('message').setDescription('Message').setRequired(true)),
-        new SlashCommandBuilder().setName('announce').setDescription('Announcement with embed')
-            .addStringOption((o) => o.setName('title').setDescription('Title').setRequired(true))
-            .addStringOption((o) => o.setName('message').setDescription('Message').setRequired(true)),
-        new SlashCommandBuilder().setName('dm').setDescription('DM a user')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true))
-            .addStringOption((o) => o.setName('message').setDescription('Message').setRequired(true)),
-        new SlashCommandBuilder().setName('verify-panel').setDescription('Send verification panel'),
+    // Setup
+    new SlashCommandBuilder().setName('setup-verify').setDescription('Setup verification panel')
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild),
+    new SlashCommandBuilder().setName('reset-xp').setDescription('Reset a user XP (owner)')
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+  ].map(c => c.toJSON());
 
-        // ═══════ AI COMMANDS ═══════
-        new SlashCommandBuilder().setName('ai').setDescription('Chat with the AI')
-            .addStringOption((o) => o.setName('prompt').setDescription('Your message').setRequired(true)),
-        new SlashCommandBuilder().setName('ai-reset').setDescription('Reset your AI conversation history'),
-        new SlashCommandBuilder().setName('ai-status').setDescription('Check AI status'),
-
-        // ═══════ ACTIVITY COMMANDS ═══════
-        new SlashCommandBuilder().setName('rank').setDescription('Show your rank card')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(false)),
-        new SlashCommandBuilder().setName('leaderboard').setDescription('Server XP leaderboard'),
-        new SlashCommandBuilder().setName('activity-stats').setDescription('Show activity stats')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(false)),
-        new SlashCommandBuilder().setName('xp-add').setDescription('Admin: add XP to user')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true))
-            .addIntegerOption((o) => o.setName('amount').setDescription('XP').setRequired(true)),
-        new SlashCommandBuilder().setName('xp-remove').setDescription('Admin: remove XP')
-            .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true))
-            .addIntegerOption((o) => o.setName('amount').setDescription('XP').setRequired(true)),
-        new SlashCommandBuilder().setName('xp-reset').setDescription('Admin: reset all XP in server'),
-    ].map((c) => c.toJSON());
-
-    try {
-        const rest = new REST({ version: '10' }).setToken(CONFIG.token);
-        if (CONFIG.guildId) {
-            await rest.put(Routes.applicationGuildCommands(CONFIG.clientId, CONFIG.guildId), { body: cmds });
-            console.log(`✅ Registered ${cmds.length} guild slash commands`);
-        } else {
-            await rest.put(Routes.applicationCommands(CONFIG.clientId), { body: cmds });
-            console.log(`✅ Registered ${cmds.length} global slash commands`);
-        }
-    } catch (e) { console.error('Command registration failed:', e); }
-}
-
-// ═══════════════════════════════════════════════════════════
-//  MESSAGE CREATE — Protections + AI + XP
-// ═══════════════════════════════════════════════════════════
-const linkRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
-const inviteRegex = /(discord\.(gg|io|me|li)|discordapp\.com\/invite|discord\.com\/invite)\/[a-zA-Z0-9]+/gi;
-
-function containsLink(content) {
-    linkRegex.lastIndex = 0; inviteRegex.lastIndex = 0;
-    if (CONFIG.link.inviteEnabled && inviteRegex.test(content)) return 'invite';
-    if (CONFIG.link.enabled && linkRegex.test(content)) {
-        const matches = content.match(linkRegex) || [];
-        for (const m of matches) {
-            if (!CONFIG.link.allowed.some((a) => m.includes(a))) return 'link';
-        }
+  const rest = new REST({ version: '10' }).setToken(cfg.token);
+  try {
+    if (cfg.devGuild) {
+      await rest.put(Routes.applicationGuildCommands(cfg.appId || client.user.id, cfg.devGuild), { body: cmds });
+      console.log('✅ Guild commands registered');
+    } else {
+      await rest.put(Routes.applicationCommands(cfg.appId || client.user.id), { body: cmds });
+      console.log('✅ Global commands registered');
     }
-    return null;
+  } catch (e) { console.error('Command registration failed:', e); }
 }
 
-function capsPercent(text) {
-    const letters = text.replace(/[^a-zA-Z]/g, '');
-    if (letters.length < 8) return 0;
-    return Math.round((letters.replace(/[^A-Z]/g, '').length / letters.length) * 100);
+// ================== INTERACTION HANDLER ==================
+client.on('interactionCreate', async (interaction) => {
+  try {
+    if (interaction.isButton()) return handleButton(interaction);
+    if (interaction.isModalSubmit()) return handleModal(interaction);
+    if (!interaction.isChatInputCommand()) return;
+    await handleCommand(interaction);
+  } catch (err) {
+    console.error('Interaction error:', err);
+    const e = em('❌ Error', `\`\`\`${err.message}\`\`\``, C.error);
+    if (interaction.deferred || interaction.replied) interaction.followUp({ embeds: [e], ephemeral: true }).catch(() => {});
+    else interaction.reply({ embeds: [e], ephemeral: true }).catch(() => {});
+  }
+});
+
+async function handleCommand(interaction) {
+  const { commandName: cmd, guild, member, options } = interaction;
+  const reply = (e, ephemeral = false) => interaction.reply({ embeds: [e], ephemeral });
+  const hasPerm = p => member.permissions.has(p);
+
+  switch (cmd) {
+    case 'ping': {
+      const sent = await interaction.deferReply({ fetchReply: true });
+      const lat = sent.createdTimestamp - interaction.createdTimestamp;
+      return interaction.editReply({ embeds: [em('🏓 Pong!', null, C.info).addFields(
+        { name: '📡 Bot', value: `\`${lat}ms\``, inline: true },
+        { name: '💓 API', value: `\`${Math.round(client.ws.ping)}ms\``, inline: true },
+        { name: '⏱️ Uptime', value: `\`${fmtUptime(client.uptime)}\``, inline: true })] });
+    }
+
+    case 'help': {
+      return reply(em(`🛡️ ${cfg.name} — Commands`, null, C.primary)
+        .setThumbnail(client.user.displayAvatarURL())
+        .addFields(
+          { name: '🔨 Moderation', value: '`/ban` `/unban` `/kick` `/timeout` `/untimeout` `/warn` `/warnings` `/clear` `/purge-user` `/slowmode` `/lock` `/unlock` `/hide` `/unhide` `/nick` `/role` `/unrole` `/modstats` `/case`' },
+          { name: '📊 XP / Levels', value: '`/rank` `/leaderboard` `/reset-xp`' },
+          { name: '🎫 Tickets', value: '`/ticket-panel` `/ticket-stats`' },
+          { name: '🎁 Giveaways', value: '`/giveaway create` `/giveaway end` `/giveaway reroll` `/giveaway list`' },
+          { name: 'ℹ️ Info', value: '`/help` `/ping` `/botinfo` `/serverinfo` `/userinfo` `/avatar` `/banner` `/roleinfo` `/channelinfo` `/invite` `/uptime` `/stats`' },
+          { name: '🛡️ Auto Systems', value: 'Anti-Spam • Anti-Nuke • Anti-Link • Anti-Caps • Bad Words • Raid Detection • Welcome • Auto-Role • Verification • Statistics' }));
+    }
+
+    // ---------- MODERATION ----------
+    case 'ban': {
+      if (!hasPerm(PermissionsBitField.Flags.BanMembers)) return reply(em('❌ No Permission', 'Need **Ban Members**.', C.error), true);
+      const u = options.getUser('user'); const reason = options.getString('reason') || 'No reason';
+      const m = await guild.members.fetch(u.id).catch(() => null);
+      if (!m) {
+        try { await guild.bans.create(u.id, { reason }); }
+        catch { return reply(em('❌ Failed', 'Could not ban.', C.error), true); }
+      } else {
+        if (!m.bannable) return reply(em('❌ Cannot Ban', 'User has higher role than me.', C.error), true);
+        await m.ban({ reason });
+      }
+      const cn = await recordCase(guild, 'ban', u.id, member.id, reason);
+      S.addModAction.run(guild.id, member.id);
+      reply(em('🔨 User Banned', `**${u.tag}** banned.\n**Case:** #${cn}\n**Reason:** ${reason}`, C.success));
+      return sendLog(guild, em('🔨 Ban',
+        `**User:** ${u.tag} (\`${u.id}\`)\n**Mod:** ${member.user.tag}\n**Case:** #${cn}\n**Reason:** ${reason}`, C.error), true);
+    }
+
+    case 'unban': {
+      if (!hasPerm(PermissionsBitField.Flags.BanMembers)) return reply(em('❌ No Permission', 'Need **Ban Members**.', C.error), true);
+      const id = options.getString('userid'); const reason = options.getString('reason') || 'No reason';
+      try { await guild.bans.remove(id, reason); }
+      catch { return reply(em('❌ Failed', 'User not banned or invalid ID.', C.error), true); }
+      const cn = await recordCase(guild, 'unban', id, member.id, reason);
+      S.addModAction.run(guild.id, member.id);
+      reply(em('✅ User Unbanned', `**${id}** unbanned.\n**Case:** #${cn}`, C.success));
+      return sendLog(guild, em('✅ Unban', `**User ID:** ${id}\n**Mod:** ${member.user.tag}\n**Case:** #${cn}`, C.success), true);
+    }
+
+    case 'kick': {
+      if (!hasPerm(PermissionsBitField.Flags.KickMembers)) return reply(em('❌ No Permission', 'Need **Kick Members**.', C.error), true);
+      const u = options.getUser('user'); const reason = options.getString('reason') || 'No reason';
+      const m = await guild.members.fetch(u.id).catch(() => null);
+      if (!m || !m.kickable) return reply(em('❌ Cannot Kick', 'User not kickable.', C.error), true);
+      await m.kick(reason);
+      const cn = await recordCase(guild, 'kick', u.id, member.id, reason);
+      S.addModAction.run(guild.id, member.id);
+      reply(em('👢 User Kicked', `**${u.tag}** kicked.\n**Case:** #${cn}`, C.success));
+      return sendLog(guild, em('👢 Kick', `**User:** ${u.tag}\n**Mod:** ${member.user.tag}\n**Case:** #${cn}\n**Reason:** ${reason}`, C.warning), true);
+    }
+
+    case 'timeout': {
+      if (!hasPerm(PermissionsBitField.Flags.ModerateMembers)) return reply(em('❌ No Permission', 'Need **Moderate Members**.', C.error), true);
+      const u = options.getUser('user'); const mins = options.getInteger('minutes');
+      const reason = options.getString('reason') || 'No reason';
+      if (mins < 1 || mins > 40320) return reply(em('❌ Invalid', '1-40320 minutes only.', C.error), true);
+      const m = await guild.members.fetch(u.id).catch(() => null);
+      if (!m || !m.moderatable) return reply(em('❌ Cannot Timeout', 'User not moderatable.', C.error), true);
+      await m.timeout(mins * 60 * 1000, reason);
+      const cn = await recordCase(guild, 'timeout', u.id, member.id, reason, mins * 60 * 1000);
+      S.addModAction.run(guild.id, member.id);
+      reply(em('⏰ Timeout Applied', `**${u.tag}** muted for **${mins}m**.\n**Case:** #${cn}`, C.warning));
+      return sendLog(guild, em('⏰ Timeout', `**User:** ${u.tag}\n**Mod:** ${member.user.tag}\n**Duration:** ${mins}m\n**Case:** #${cn}`, C.warning), true);
+    }
+
+    case 'untimeout': {
+      if (!hasPerm(PermissionsBitField.Flags.ModerateMembers)) return reply(em('❌ No Permission', 'Need **Moderate Members**.', C.error), true);
+      const u = options.getUser('user');
+      const m = await guild.members.fetch(u.id).catch(() => null);
+      if (!m || !m.moderatable) return reply(em('❌ Failed', 'Cannot untimeout.', C.error), true);
+      await m.timeout(null);
+      const cn = await recordCase(guild, 'untimeout', u.id, member.id, 'Manual');
+      reply(em('✅ Timeout Removed', `**${u.tag}** can talk again.`, C.success));
+      return sendLog(guild, em('✅ Untimeout', `**User:** ${u.tag}\n**Mod:** ${member.user.tag}\n**Case:** #${cn}`, C.success), true);
+    }
+
+    case 'warn': {
+      if (!hasPerm(PermissionsBitField.Flags.ModerateMembers)) return reply(em('❌ No Permission', 'Need **Moderate Members**.', C.error), true);
+      const u = options.getUser('user'); const reason = options.getString('reason') || 'No reason';
+      S.addWarn.run(guild.id, u.id, member.id, reason, Date.now());
+      const cn = await recordCase(guild, 'warn', u.id, member.id, reason);
+      S.addModAction.run(guild.id, member.id);
+      const warns = S.getWarns.all(guild.id, u.id);
+      reply(em('⚠️ Warning Issued', `**${u.tag}** warned.\n**Case:** #${cn}\n**Total:** \`${warns.length}\`\n**Reason:** ${reason}`, C.warning));
+      return sendLog(guild, em('⚠️ Warn', `**User:** ${u.tag}\n**Mod:** ${member.user.tag}\n**Case:** #${cn}\n**Reason:** ${reason}`, C.warning), true);
+    }
+
+    case 'warnings': {
+      const u = options.getUser('user');
+      const warns = S.getWarns.all(guild.id, u.id);
+      if (!warns.length) return reply(em('📋 No Warnings', `**${u.tag}** has no warnings.`, C.success));
+      const list = warns.slice(0, 10).map((w, i) =>
+        `**#${i + 1}** • <@${w.mod_id}> • <t:${Math.floor(w.timestamp / 1000)}:R>\n└ *${w.reason}*`).join('\n');
+      return reply(em(`📋 Warnings — ${u.tag} (${warns.length})`, list, C.warning));
+    }
+
+    case 'clear': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageMessages)) return reply(em('❌ No Permission', 'Need **Manage Messages**.', C.error), true);
+      const n = options.getInteger('amount');
+      if (n < 1 || n > 100) return reply(em('❌ Invalid', '1-100 only.', C.error), true);
+      const del = await interaction.channel.bulkDelete(n, true);
+      const r = await reply(em('🧹 Cleared', `Deleted **${del.size}** messages.`, C.success));
+      setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+    }
+
+    case 'purge-user': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageMessages)) return reply(em('❌ No Permission', 'Need **Manage Messages**.', C.error), true);
+      const u = options.getUser('user'); const n = options.getInteger('amount');
+      if (n < 1 || n > 100) return reply(em('❌ Invalid', '1-100 only.', C.error), true);
+      const msgs = await interaction.channel.messages.fetch({ limit: 100 });
+      const filtered = msgs.filter(m => m.author.id === u.id).first(n);
+      await interaction.channel.bulkDelete(filtered, true);
+      const r = await reply(em('🧹 Purged', `Deleted **${filtered.length}** messages from **${u.tag}**.`, C.success));
+      setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+    }
+
+    case 'slowmode': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageChannels)) return reply(em('❌ No Permission', 'Need **Manage Channels**.', C.error), true);
+      const s = options.getInteger('seconds');
+      await interaction.channel.setRateLimitPerUser(s);
+      return reply(em('🐌 Slowmode', `Set to **${s}s**.`, C.info));
+    }
+
+    case 'lock': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageChannels)) return reply(em('❌ No Permission', 'Need **Manage Channels**.', C.error), true);
+      await interaction.channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
+      return reply(em('🔒 Locked', 'Channel locked.', C.warning));
+    }
+
+    case 'unlock': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageChannels)) return reply(em('❌ No Permission', 'Need **Manage Channels**.', C.error), true);
+      await interaction.channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null });
+      return reply(em('🔓 Unlocked', 'Channel unlocked.', C.success));
+    }
+
+    case 'hide': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageChannels)) return reply(em('❌ No Permission', 'Need **Manage Channels**.', C.error), true);
+      await interaction.channel.permissionOverwrites.edit(guild.roles.everyone, { ViewChannel: false });
+      return reply(em('🙈 Hidden', 'Channel hidden.', C.info));
+    }
+
+    case 'unhide': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageChannels)) return reply(em('❌ No Permission', 'Need **Manage Channels**.', C.error), true);
+      await interaction.channel.permissionOverwrites.edit(guild.roles.everyone, { ViewChannel: null });
+      return reply(em('👁️ Visible', 'Channel unhidden.', C.success));
+    }
+
+    case 'nick': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageNicknames)) return reply(em('❌ No Permission', 'Need **Manage Nicknames**.', C.error), true);
+      const u = options.getUser('user'); const name = options.getString('name');
+      const m = await guild.members.fetch(u.id).catch(() => null);
+      if (!m) return reply(em('❌ Not Found', 'Member not in server.', C.error), true);
+      try { await m.setNickname(name || null); }
+      catch { return reply(em('❌ Failed', 'Cannot change nickname (hierarchy).', C.error), true); }
+      return reply(em('✏️ Nickname', name ? `Set **${u.tag}** → \`${name}\`` : `Reset **${u.tag}**`, C.success));
+    }
+
+    case 'role': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageRoles)) return reply(em('❌ No Permission', 'Need **Manage Roles**.', C.error), true);
+      const u = options.getUser('user'); const role = options.getRole('role');
+      const m = await guild.members.fetch(u.id).catch(() => null);
+      if (!m) return reply(em('❌ Not Found', 'Member not in server.', C.error), true);
+      if (role.position >= guild.members.me.roles.highest.position) return reply(em('❌ Cannot', 'Role higher than mine.', C.error), true);
+      await m.roles.add(role).catch(err => null);
+      return reply(em('✅ Role Added', `${role} → ${u.tag}`, C.success));
+    }
+
+    case 'unrole': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageRoles)) return reply(em('❌ No Permission', 'Need **Manage Roles**.', C.error), true);
+      const u = options.getUser('user'); const role = options.getRole('role');
+      const m = await guild.members.fetch(u.id).catch(() => null);
+      if (!m) return reply(em('❌ Not Found', 'Not in server.', C.error), true);
+      await m.roles.remove(role).catch(() => null);
+      return reply(em('✅ Role Removed', `${role} removed from ${u.tag}`, C.success));
+    }
+
+    case 'modstats': {
+      const rows = S.getModStats.all(guild.id);
+      if (!rows.length) return reply(em('📊 No Data', 'No moderator actions recorded yet.', C.info));
+      const list = rows.map((r, i) => `**#${i + 1}** <@${r.mod_id}> — \`${r.actions}\` actions`).join('\n');
+      return reply(em('📊 Moderator Leaderboard', list, C.primary));
+    }
+
+    case 'case': {
+      const n = options.getInteger('number');
+      const c = S.getCase.get(guild.id, n);
+      if (!c) return reply(em('❌ Not Found', `Case #${n} doesn't exist.`, C.error), true);
+      return reply(em(`📁 Case #${c.case_number}`, null, C.info).addFields(
+        { name: 'Action', value: `\`${c.action.toUpperCase()}\``, inline: true },
+        { name: 'User', value: `<@${c.user_id}>`, inline: true },
+        { name: 'Moderator', value: `<@${c.mod_id}>`, inline: true },
+        { name: 'Reason', value: c.reason || 'None' },
+        { name: 'Date', value: `<t:${Math.floor(c.timestamp / 1000)}:F>` },
+      ));
+    }
+
+    // ---------- XP ----------
+    case 'rank': {
+      const u = options.getUser('user') || interaction.user;
+      const d = S.getXP.get(guild.id, u.id) || { xp: 0, level: 0 };
+      const need = xpNeeded(d.level);
+      const cur = d.xp - totalXPFor(d.level);
+      const rankRow = S.rank.get(guild.id, d.xp);
+      const rank = rankRow?.r + 1 || 1;
+      const pct = Math.min(100, Math.round((cur / need) * 100));
+      const progress = bar(cur, need, 20);
+      return reply(em(`📊 ${u.username}'s Rank`, null, C.primary)
+        .setThumbnail(u.displayAvatarURL({ size: 256 }))
+        .addFields(
+          { name: '🏆 Rank', value: `\`#${rank}\``, inline: true },
+          { name: '⭐ Level', value: `\`${d.level}\``, inline: true },
+          { name: '✨ XP', value: `\`${d.xp}\``, inline: true },
+          { name: `📈 Progress (${pct}%)`, value: `\`${progress}\`\n\`${cur}/${need} XP\`` },
+        ));
+    }
+
+    case 'leaderboard': {
+      const rows = S.topXP.all(guild.id, cfg.xp.lbSize);
+      if (!rows.length) return reply(em('📊 Empty', 'No data yet!', C.info));
+      const list = await Promise.all(rows.map(async (r, i) => {
+        const u = await client.users.fetch(r.user_id).catch(() => null);
+        const medal = ['🥇', '🥈', '🥉'][i] || `**#${i + 1}**`;
+        return `${medal} ${u ? u.tag : r.user_id} — Lvl \`${r.level}\` • \`${r.xp}\` XP`;
+      }));
+      return reply(em('🏆 XP Leaderboard', list.join('\n'), C.primary));
+    }
+
+    case 'reset-xp': {
+      if (!hasPerm(PermissionsBitField.Flags.Administrator)) return reply(em('❌ No Permission', 'Need **Administrator**.', C.error), true);
+      const u = options.getUser('user');
+      S.upsertXP.run(guild.id, u.id, 0, 0, 0, 0);
+      return reply(em('✅ XP Reset', `XP for **${u.tag}** has been reset.`, C.success));
+    }
+
+    // ---------- INFO ----------
+    case 'botinfo': {
+      const mem = process.memoryUsage();
+      return reply(em(`🤖 ${cfg.name}`, null, C.primary)
+        .setThumbnail(client.user.displayAvatarURL())
+        .addFields(
+          { name: '👑 Owner', value: cfg.owners.length ? cfg.owners.map(o => `<@${o}>`).join(', ') : 'N/A', inline: true },
+          { name: '📚 Servers', value: `\`${client.guilds.cache.size}\``, inline: true },
+          { name: '👥 Users', value: `\`${client.users.cache.size}\``, inline: true },
+          { name: '⏱️ Uptime', value: `\`${fmtUptime(client.uptime)}\``, inline: true },
+          { name: '💾 Memory', value: `\`${Math.round(mem.heapUsed / 1024 / 1024)}MB\``, inline: true },
+          { name: '📡 Ping', value: `\`${Math.round(client.ws.ping)}ms\``, inline: true },
+          { name: '📦 Discord.js', value: `\`v14\``, inline: true },
+          { name: '🟢 Node', value: `\`${process.version}\``, inline: true },
+        ));
+    }
+
+    case 'serverinfo': {
+      return reply(em(`🏠 ${guild.name}`, null, C.primary)
+        .setThumbnail(guild.iconURL({ size: 256 }) || null)
+        .addFields(
+          { name: '👑 Owner', value: `<@${guild.ownerId}>`, inline: true },
+          { name: '🆔 ID', value: `\`${guild.id}\``, inline: true },
+          { name: '👥 Members', value: `\`${guild.memberCount}\``, inline: true },
+          { name: '💬 Channels', value: `\`${guild.channels.cache.size}\``, inline: true },
+          { name: '🎭 Roles', value: `\`${guild.roles.cache.size}\``, inline: true },
+          { name: '😀 Emojis', value: `\`${guild.emojis.cache.size}\``, inline: true },
+          { name: '🚀 Boosts', value: `Level \`${guild.premiumTier}\` • \`${guild.premiumSubscriptionCount}\``, inline: true },
+          { name: '📅 Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true },
+        ));
+    }
+
+    case 'userinfo': {
+      const u = options.getUser('user') || interaction.user;
+      const m = await guild.members.fetch(u.id).catch(() => null);
+      const e = em(`👤 ${u.tag}`, null, C.info)
+        .setThumbnail(u.displayAvatarURL({ size: 256 }))
+        .addFields(
+          { name: '🆔 ID', value: `\`${u.id}\``, inline: true },
+          { name: '🤖 Bot', value: u.bot ? 'Yes' : 'No', inline: true },
+          { name: '📅 Created', value: `<t:${Math.floor(u.createdTimestamp / 1000)}:R>`, inline: true },
+        );
+      if (m) {
+        const roles = m.roles.cache.filter(r => r.id !== guild.id).map(r => r.toString()).slice(0, 10).join(', ') || 'None';
+        e.addFields(
+          { name: '📥 Joined', value: `<t:${Math.floor(m.joinedTimestamp / 1000)}:R>`, inline: true },
+          { name: '🎨 Nickname', value: m.nickname || 'None', inline: true },
+          { name: '🔝 Highest Role', value: `${m.roles.highest}`, inline: true },
+          { name: '🎭 Roles', value: roles.slice(0, 1024) },
+        );
+      }
+      return reply(e);
+    }
+
+    case 'avatar': {
+      const u = options.getUser('user') || interaction.user;
+      return reply(em(`🖼️ ${u.tag}'s Avatar`, null, C.info)
+        .setImage(u.displayAvatarURL({ size: 1024, dynamic: true })));
+    }
+
+    case 'banner': {
+      const u = options.getUser('user') || interaction.user;
+      const fetched = await client.users.fetch(u.id, { force: true });
+      if (!fetched.banner) return reply(em('❌ No Banner', `**${u.tag}** has no banner.`, C.error));
+      return reply(em(`🖼️ ${u.tag}'s Banner`, null, C.info)
+        .setImage(fetched.bannerURL({ size: 1024, dynamic: true })));
+    }
+
+    case 'roleinfo': {
+      const r = options.getRole('role');
+      return reply(em(`🎭 ${r.name}`, null, r.hexColor === '#000000' ? C.info : r.hexColor)
+        .addFields(
+          { name: '🆔 ID', value: `\`${r.id}\``, inline: true },
+          { name: '🎨 Color', value: `\`${r.hexColor}\``, inline: true },
+          { name: '📍 Position', value: `\`${r.position}\``, inline: true },
+          { name: '👥 Members', value: `\`${r.members.size}\``, inline: true },
+          { name: '🔔 Mentionable', value: r.mentionable ? 'Yes' : 'No', inline: true },
+          { name: '📌 Hoisted', value: r.hoist ? 'Yes' : 'No', inline: true },
+          { name: '📅 Created', value: `<t:${Math.floor(r.createdTimestamp / 1000)}:R>` },
+        ));
+    }
+
+    case 'channelinfo': {
+      const ch = options.getChannel('channel') || interaction.channel;
+      return reply(em(`📺 ${ch.name}`, null, C.info)
+        .addFields(
+          { name: '🆔 ID', value: `\`${ch.id}\``, inline: true },
+          { name: '📁 Type', value: `\`${ChannelType[ch.type]}\``, inline: true },
+          { name: '📅 Created', value: `<t:${Math.floor(ch.createdTimestamp / 1000)}:R>`, inline: true },
+          { name: '📌 NSFW', value: ch.nsfw ? 'Yes' : 'No', inline: true },
+          { name: '🐌 Slowmode', value: `\`${ch.rateLimitPerUser || 0}s\``, inline: true },
+        ));
+    }
+
+    case 'invite': {
+      const link = `https://discord.com/api/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot%20applications.commands`;
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setLabel('Invite Bot').setStyle(ButtonStyle.Link).setURL(link)
+          .setEmoji('🔗'));
+      return interaction.reply({ embeds: [em('🔗 Invite Link', `[Click here](${link})`, C.primary)], components: [row] });
+    }
+
+    case 'uptime': {
+      return reply(em('⏱️ Uptime', `Bot has been online for **${fmtUptime(client.uptime)}**`, C.success));
+    }
+
+    case 'stats': {
+      const humans = guild.members.cache.filter(m => !m.user.bot).size;
+      const bots = guild.memberCount - humans;
+      const online = guild.members.cache.filter(m => m.presence?.status !== 'offline' && m.presence).size;
+      return reply(em(`📊 ${guild.name} Stats`, null, C.primary)
+        .setThumbnail(guild.iconURL({ size: 256 }) || null)
+        .addFields(
+          { name: '👥 Total', value: `\`${guild.memberCount}\``, inline: true },
+          { name: '🧑 Humans', value: `\`${humans}\``, inline: true },
+          { name: '🤖 Bots', value: `\`${bots}\``, inline: true },
+          { name: '🟢 Online', value: `\`${online}\``, inline: true },
+          { name: '🚀 Boosts', value: `\`${guild.premiumSubscriptionCount}\``, inline: true },
+          { name: '📅 Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true },
+        ));
+    }
+
+    // ---------- TICKETS ----------
+    case 'ticket-panel': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageGuild)) return reply(em('❌ No Permission', 'Need **Manage Server**.', C.error), true);
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('ticket_create_general').setLabel('General').setStyle(ButtonStyle.Primary).setEmoji('💬'),
+        new ButtonBuilder().setCustomId('ticket_create_technical').setLabel('Technical').setStyle(ButtonStyle.Secondary).setEmoji('🛠️'),
+        new ButtonBuilder().setCustomId('ticket_create_billing').setLabel('Billing').setStyle(ButtonStyle.Success).setEmoji('💰'),
+        new ButtonBuilder().setCustomId('ticket_create_other').setLabel('Other').setStyle(ButtonStyle.Danger).setEmoji('📩'),
+      );
+      const e = em('🎫 Support Tickets', 'Choose a category below to open a ticket.\nOur staff will assist you shortly.', C.primary)
+        .setThumbnail(client.user.displayAvatarURL());
+      await interaction.channel.send({ embeds: [e], components: [row] });
+      return reply(em('✅ Panel Sent', 'Ticket panel posted.', C.success), true);
+    }
+
+    case 'ticket-stats': {
+      const open = db.prepare("SELECT COUNT(*) AS c FROM tickets WHERE guild_id=? AND status='open'").get(guild.id).c;
+      const closed = db.prepare("SELECT COUNT(*) AS c FROM tickets WHERE guild_id=? AND status='closed'").get(guild.id).c;
+      const total = open + closed;
+      return reply(em('🎫 Ticket Stats', null, C.info).addFields(
+        { name: '🟢 Open', value: `\`${open}\``, inline: true },
+        { name: '🔴 Closed', value: `\`${closed}\``, inline: true },
+        { name: '📊 Total', value: `\`${total}\``, inline: true },
+      ));
+    }
+
+    // ---------- GIVEAWAYS ----------
+    case 'giveaway': {
+      const sub = options.getSubcommand();
+      if (!hasPerm(PermissionsBitField.Flags.ManageGuild)) return reply(em('❌ No Permission', 'Need **Manage Server**.', C.error), true);
+
+      if (sub === 'create') {
+        const prize = options.getString('prize');
+        const mins = options.getInteger('minutes');
+        const winners = options.getInteger('winners') || cfg.giveaway.defaultWinners;
+        const endsAt = Date.now() + mins * 60 * 1000;
+        const e = em('🎉 GIVEAWAY 🎉', null, C.primary)
+          .setDescription(`**Prize:** ${prize}\n**Winners:** \`${winners}\`\n**Ends:** <t:${Math.floor(endsAt / 1000)}:R>\n\nClick 🎉 to enter!`)
+          .setFooter({ text: `Hosted by ${interaction.user.tag} • Ends` })
+          .setTimestamp(endsAt);
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('giveaway_join').setLabel('Join').setStyle(ButtonStyle.Success).setEmoji('🎉'),
+          new ButtonBuilder().setCustomId('giveaway_leave').setLabel('Leave').setStyle(ButtonStyle.Secondary).setEmoji('❌'),
+        );
+        await interaction.reply({ content: '🎉 Giveaway started!', ephemeral: true });
+        const msg = await interaction.channel.send({ embeds: [e], components: [row] });
+        S.createGiveaway.run(guild.id, interaction.channel.id, msg.id, interaction.user.id, prize, winners, endsAt, JSON.stringify({ minAge: cfg.giveaway.minAge, role: cfg.giveaway.requireRole }));
+        setTimeout(() => endGiveaway(msg.id), mins * 60 * 1000);
+        return;
+      }
+
+      if (sub === 'end') {
+        const id = options.getString('message_id');
+        const g = S.getGiveaway.get(id);
+        if (!g) return reply(em('❌ Not Found', 'Giveaway not found.', C.error), true);
+        await endGiveaway(id);
+        return reply(em('✅ Ended', 'Giveaway ended.', C.success), true);
+      }
+
+      if (sub === 'reroll') {
+        const id = options.getString('message_id');
+        const g = S.getGiveaway.get(id);
+        if (!g) return reply(em('❌ Not Found', 'Giveaway not found.', C.error), true);
+        const entries = JSON.parse(g.entries || '[]');
+        if (!entries.length) return reply(em('❌ No Entries', 'No participants.', C.error), true);
+        const winner = entries[Math.floor(Math.random() * entries.length)];
+        const hist = JSON.parse(g.reroll_history || '[]');
+        hist.push({ user: winner, at: Date.now() });
+        S.updateReroll.run(JSON.stringify(hist), id);
+        const ch = await guild.channels.fetch(g.channel_id).catch(() => null);
+        if (ch) ch.send({ content: `🎉 Reroll! New winner: <@${winner}> for **${g.prize}**!` });
+        return reply(em('✅ Rerolled', `<@${winner}> is new winner!`, C.success), true);
+      }
+
+      if (sub === 'list') {
+        const gs = S.getActiveGiveaways.all().filter(g => g.guild_id === guild.id);
+        if (!gs.length) return reply(em('📋 No Giveaways', 'No active giveaways.', C.info));
+        const list = gs.map(g => `**${g.prize}** • <#${g.channel_id}> • Ends <t:${Math.floor(g.ends_at / 1000)}:R>`).join('\n');
+        return reply(em('📋 Active Giveaways', list, C.info));
+      }
+    }
+
+    // ---------- SETUP ----------
+    case 'setup-verify': {
+      if (!hasPerm(PermissionsBitField.Flags.ManageGuild)) return reply(em('❌ No Permission', 'Need **Manage Server**.', C.error), true);
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('verify_start').setLabel('Verify Me').setStyle(ButtonStyle.Success).setEmoji('✅'),
+      );
+      const e = em('✅ Verification', cfg.verify.message, C.success)
+        .setThumbnail(client.user.displayAvatarURL());
+      await interaction.channel.send({ embeds: [e], components: [row] });
+      return reply(em('✅ Sent', 'Verification panel posted.', C.success), true);
+    }
+  }
 }
+
+function fmtUptime(ms) {
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${d}d ${h}h ${m}m ${sec}s`;
+}
+
+// ================== BUTTON HANDLER ==================
+async function handleButton(interaction) {
+  const { customId, guild, member } = interaction;
+
+  // ----- VERIFICATION -----
+  if (customId === 'verify_start') {
+    const code = String(randInt(1000, 9999));
+    S.setVerifyCode.run(guild.id, member.id, code, Date.now());
+    const modal = new ModalBuilder().setCustomId('verify_modal').setTitle('Verification');
+    const input = new TextInputBuilder().setCustomId('verify_input').setLabel(`Type this code: ${code}`)
+      .setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(4);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    return interaction.showModal(modal);
+  }
+
+  // ----- TICKETS -----
+  if (customId.startsWith('ticket_create_')) {
+    const type = customId.replace('ticket_create_', '');
+    const catName = cfg.tickets.categories[type] || 'Support';
+    if (cfg.tickets.preventDuplicate) {
+      const open = S.getOpenTickets.all(guild.id, member.id);
+      if (open.length >= cfg.tickets.maxOpen)
+        return interaction.reply({ embeds: [em('❌ Ticket Exists', `You already have an open ticket: <#${open[0].channel_id}>`, C.error)], ephemeral: true });
+    }
+    await interaction.deferReply({ ephemeral: true });
+    const parent = guild.channels.cache.find(c => c.name === catName && c.type === ChannelType.GuildCategory);
+    const overwrites = [
+      { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+      { id: member.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+      { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels] },
+    ];
+    for (const r of guild.roles.cache.values()) {
+      if (cfg.tickets.staffRoles.includes(r.name.toLowerCase())) {
+        overwrites.push({ id: r.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] });
+      }
+    }
+    const ch = await guild.channels.create({
+      name: `ticket-${member.user.username}`.toLowerCase().slice(0, 90),
+      type: ChannelType.GuildText, parent: parent?.id, permissionOverwrites: overwrites,
+    });
+    S.createTicket.run(guild.id, ch.id, member.id, type, Date.now());
+    const e = em(`🎫 ${catName}`, `Hello ${member}, our staff will be with you shortly.\n\n**Type:** \`${type}\`\n**Created:** <t:${Math.floor(Date.now() / 1000)}:R>`, C.primary);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('ticket_claim').setLabel('Claim').setStyle(ButtonStyle.Primary).setEmoji('✋'),
+      new ButtonBuilder().setCustomId('ticket_close').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+    );
+    await ch.send({ content: `${member} ${cfg.tickets.staffRoles.map(r => guild.roles.cache.find(x => x.name.toLowerCase() === r)).filter(Boolean).map(r => r.toString()).join(' ')}`, embeds: [e], components: [row] });
+    await interaction.editReply({ embeds: [em('✅ Ticket Created', `Your ticket: ${ch}`, C.success)] });
+    return sendLog(guild, em('🎫 Ticket Opened', `**User:** ${member.user.tag}\n**Type:** ${type}\n**Channel:** ${ch}`, C.info));
+  }
+
+  if (customId === 'ticket_claim') {
+    const t = S.getTicketByChannel.get(interaction.channel.id);
+    if (!t) return interaction.reply({ content: '❌ Invalid ticket.', ephemeral: true });
+    if (!isStaff(member)) return interaction.reply({ content: '❌ Staff only.', ephemeral: true });
+    S.claimTicket.run(member.id, interaction.channel.id);
+    return interaction.reply({ embeds: [em('✋ Claimed', `This ticket is now handled by ${member}.`, C.success)] });
+  }
+
+  if (customId === 'ticket_close') {
+    const t = S.getTicketByChannel.get(interaction.channel.id);
+    if (!t) return interaction.reply({ content: '❌ Invalid ticket.', ephemeral: true });
+    if (!isStaff(member) && t.user_id !== member.id)
+      return interaction.reply({ content: '❌ Not allowed.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('ticket_close_modal').setTitle('Close Ticket');
+    const reason = new TextInputBuilder().setCustomId('close_reason').setLabel('Reason')
+      .setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(500);
+    modal.addComponents(new ActionRowBuilder().addComponents(reason));
+    return interaction.showModal(modal);
+  }
+
+  if (customId === 'ticket_reopen') {
+    const t = S.getTicketByChannel.get(interaction.channel.id);
+    if (!t) return interaction.reply({ content: '❌ Not a ticket.', ephemeral: true });
+    S.reopenTicket.run(interaction.channel.id);
+    await interaction.channel.permissionOverwrites.edit(guild.roles.everyone, { ViewChannel: false });
+    return interaction.reply({ embeds: [em('🔓 Reopened', 'Ticket reopened.', C.success)] });
+  }
+
+  // ----- GIVEAWAY -----
+  if (customId === 'giveaway_join' || customId === 'giveaway_leave') {
+    const g = S.getGiveaway.get(interaction.message.id);
+    if (!g || g.ended) return interaction.reply({ content: '❌ Giveaway ended.', ephemeral: true });
+    const req = JSON.parse(g.requirements || '{}');
+    const entries = JSON.parse(g.entries || '[]');
+    if (customId === 'giveaway_join') {
+      if (req.minAge && (Date.now() - member.user.createdTimestamp) < req.minAge * 86400000)
+        return interaction.reply({ content: `❌ Account must be at least ${req.minAge} days old.`, ephemeral: true });
+      if (req.role) {
+        const role = guild.roles.cache.find(r => r.name.toLowerCase() === req.role.toLowerCase());
+        if (role && !member.roles.cache.has(role.id))
+          return interaction.reply({ content: `❌ You need the **${role.name}** role.`, ephemeral: true });
+      }
+      if (entries.includes(member.id)) return interaction.reply({ content: '✅ Already entered!', ephemeral: true });
+      entries.push(member.id);
+      S.updateGiveawayEntries.run(JSON.stringify(entries), interaction.message.id);
+      return interaction.reply({ content: '🎉 You joined the giveaway!', ephemeral: true });
+    }
+    if (customId === 'giveaway_leave') {
+      const i = entries.indexOf(member.id);
+      if (i < 0) return interaction.reply({ content: '❌ You are not in this giveaway.', ephemeral: true });
+      entries.splice(i, 1);
+      S.updateGiveawayEntries.run(JSON.stringify(entries), interaction.message.id);
+      return interaction.reply({ content: '✅ You left the giveaway.', ephemeral: true });
+    }
+  }
+}
+
+// ================== MODAL HANDLER ==================
+async function handleModal(interaction) {
+  const { customId, guild, member } = interaction;
+
+  if (customId === 'verify_modal') {
+    const code = interaction.fields.getTextInputValue('verify_input');
+    const stored = S.getVerifyCode.get(guild.id, member.id);
+    if (!stored) return interaction.reply({ embeds: [em('❌ Expired', 'Verification code expired.', C.error)], ephemeral: true });
+    if (Date.now() - stored.timestamp > 5 * 60 * 1000)
+      return interaction.reply({ embeds: [em('❌ Expired', 'Code expired. Try again.', C.error)], ephemeral: true });
+    if (stored.code !== code.trim())
+      return interaction.reply({ embeds: [em('❌ Wrong Code', 'Try again.', C.error)], ephemeral: true });
+    S.delVerifyCode.run(guild.id, member.id);
+
+    const verified = guild.roles.cache.find(r => r.name.toLowerCase() === cfg.verify.role.toLowerCase());
+    const unverified = guild.roles.cache.find(r => r.name.toLowerCase() === cfg.verify.unverifiedRole.toLowerCase());
+    if (unverified) await member.roles.remove(unverified).catch(() => {});
+    if (verified) await member.roles.add(verified).catch(() => {});
+
+    await interaction.reply({ embeds: [em('✅ Verified!', `You now have access to the server, ${member}!`, C.success)], ephemeral: true });
+    return sendLog(guild, em('✅ Verified', `**User:** ${member.user.tag}\n**ID:** ${member.id}`, C.success));
+  }
+
+  if (customId === 'ticket_close_modal') {
+    const reason = interaction.fields.getTextInputValue('close_reason') || 'No reason';
+    const t = S.getTicketByChannel.get(interaction.channel.id);
+    if (!t) return interaction.reply({ content: '❌ Invalid.', ephemeral: true });
+    await interaction.reply({ embeds: [em('🔒 Closing', 'Ticket will be closed in 5 seconds...', C.warning)] });
+
+    // Transcript (simple)
+    if (cfg.tickets.transcript) {
+      const msgs = await interaction.channel.messages.fetch({ limit: 100 });
+      const arr = [...msgs.values()].reverse();
+      const text = arr.map(m => `[${new Date(m.createdTimestamp).toISOString()}] ${m.author.tag}: ${m.content}`).join('\n');
+      const buf = Buffer.from(text, 'utf-8');
+      const logCh = await findChannel(guild, cfg.tickets.logChannel);
+      if (logCh) logCh.send({ embeds: [em('📄 Ticket Transcript',
+        `**Ticket:** #${t.id}\n**User:** <@${t.user_id}>\n**Closed by:** ${member}\n**Reason:** ${reason}`, C.info)],
+        files: [{ attachment: buf, name: `transcript-${t.id}.txt` }] }).catch(() => {});
+    }
+
+    S.closeTicket.run(Date.now(), reason, interaction.channel.id);
+    await sendLog(guild, em('🔒 Ticket Closed', `**Ticket:** #${t.id}\n**User:** <@${t.user_id}>\n**Closed by:** ${member.user.tag}\n**Reason:** ${reason}`, C.warning));
+    setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
+  }
+}
+
+// ================== MESSAGE EVENTS (Anti-abuse + XP) ==================
+const spamCache = new Map();
+const nukeCache = new Map();
+const raidCache = new Map();
 
 client.on('messageCreate', async (message) => {
-    if (!message.guild || message.author.bot) return;
-    const isMod = message.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
+  if (!message.guild || message.author.bot) return;
+  const m = message.member;
+  if (!m) return;
 
-    // ── AI Chat ──
-    if (CONFIG.ai.enabled) {
-        const isAITrigger = message.content.toLowerCase().startsWith(CONFIG.ai.triggerPrefix.toLowerCase());
-        const isMention = CONFIG.ai.replyOnMention && message.mentions.has(client.user) && !message.mentions.everyone;
-        const inAllowedChannel = (CONFIG.ai.channelId && message.channel.id === CONFIG.ai.channelId) ||
-            CONFIG.ai.channelIds.includes(message.channel.id);
+  const isAdmin = m.permissions.has(PermissionsBitField.Flags.Administrator);
+  const isMod = m.permissions.has(PermissionsBitField.Flags.ManageMessages);
 
-        if ((isAITrigger || isMention) && (!CONFIG.ai.channelId && CONFIG.ai.channelIds.length === 0 || inAllowedChannel)) {
-            // Cooldown
-            const cd = aiCooldowns.get(message.author.id) || 0;
-            if (Date.now() < cd) {
-                const left = Math.ceil((cd - Date.now()) / 1000);
-                const w = await safeSend(message.channel, `⏳ Slow down ${message.author}, wait **${left}s**.`);
-                if (w) setTimeout(() => w.delete().catch(() => {}), 4000);
-                return;
-            }
-            aiCooldowns.set(message.author.id, Date.now() + CONFIG.ai.cooldown * 1000);
+  // ---- XP ----
+  if (cfg.xp.enabled && !isAdmin) handleXP(message).catch(() => {});
 
-            let prompt = message.content;
-            if (isAITrigger) prompt = prompt.slice(CONFIG.ai.triggerPrefix.length).trim();
-            if (isMention) prompt = prompt.replace(/<@!?\d+>/g, '').trim();
-            if (!prompt) prompt = 'Hello!';
+  if (isAdmin || isMod) return;
 
-            // Typing indicator
-            await message.channel.sendTyping().catch(() => {});
-
-            const reply = await askAI(message.author.id, message.author.username, prompt);
-
-            // Split long messages
-            const chunks = reply.match(/[\s\S]{1,1900}/g) || [reply];
-            for (let i = 0; i < chunks.length; i++) {
-                const embed = createEmbed('premium', i === 0 ? `🤖 AI Reply` : null, chunks[i])
-                    .setAuthor({ name: message.author.username, iconURL: message.author.displayAvatarURL() });
-                await message.reply({ embeds: [embed] }).catch(async () => {
-                    await safeSend(message.channel, chunks[i]);
-                });
-            }
-            // Don't return — still give XP
-        }
-    }
-
-    // ── Anti-link ──
-    if (!isMod) {
-        const linkType = containsLink(message.content);
-        if (linkType) {
-            try {
-                await message.delete().catch(() => {});
-                const w = await safeSend(message.channel, `⚠️ ${message.author}, ${linkType === 'invite' ? 'invites' : 'links'} not allowed!`);
-                if (w) setTimeout(() => w.delete().catch(() => {}), 5000);
-                sendLog(message.guild, createEmbed('warning', '🔗 Link Blocked',
-                    `**User:** ${message.author.tag}\n**Channel:** ${message.channel}\n**Type:** ${linkType}`), true);
-            } catch {}
-            return;
-        }
-
-        // ── Bad words ──
-        if (CONFIG.badWords.length) {
-            const lower = message.content.toLowerCase();
-            if (CONFIG.badWords.some((w) => lower.includes(w))) {
-                await message.delete().catch(() => {});
-                const w = await safeSend(message.channel, `🚫 ${message.author}, watch your language!`);
-                if (w) setTimeout(() => w.delete().catch(() => {}), 5000);
-                return;
-            }
-        }
-
-        // ── Anti caps ──
-        if (CONFIG.antiCaps.enabled && capsPercent(message.content) >= CONFIG.antiCaps.percent) {
-            await message.delete().catch(() => {});
-            const w = await safeSend(message.channel, `🔠 ${message.author}, don't use excessive caps!`);
-            if (w) setTimeout(() => w.delete().catch(() => {}), 5000);
-            return;
-        }
-
-        // ── Mention spam ──
-        if (message.mentions.users.size > CONFIG.antispam.mentionLimit) {
-            await message.delete().catch(() => {});
-            await message.member.timeout(CONFIG.antispam.timeout, 'Mention spam').catch(() => {});
-            return;
-        }
-    }
-
-    // ── Anti-spam ──
-    if (CONFIG.antispam.enabled && !isMod) {
-        const key = `${message.guild.id}-${message.author.id}`;
-        const now = Date.now();
-        let data = spamCache.get(key) || { timestamps: [], messages: [] };
-        data.timestamps = data.timestamps.filter((t) => now - t < CONFIG.antispam.window);
-        data.timestamps.push(now);
-        data.messages = data.messages.filter((m) => now - m.time < CONFIG.antispam.window);
-        data.messages.push({ content: message.content.toLowerCase(), time: now });
-        const dup = data.messages.filter((m) => m.content === message.content.toLowerCase()).length;
-        spamCache.set(key, data);
-
-        if (data.timestamps.length > CONFIG.antispam.limit || dup >= CONFIG.antispam.dupLimit) {
-            try {
-                await message.member.timeout(CONFIG.antispam.timeout, 'Anti-Spam').catch(() => {});
-                const fetched = await message.channel.messages.fetch({ limit: 20 }).catch(() => null);
-                if (fetched) {
-                    const toDelete = fetched.filter((m) => m.author.id === message.author.id && Date.now() - m.createdTimestamp < CONFIG.antispam.window);
-                    await message.channel.bulkDelete(toDelete, true).catch(() => {});
-                }
-                sendLog(message.guild, createEmbed('error', '🚫 Anti-Spam',
-                    `**User:** ${message.author.tag}\n**Timeout:** ${Math.round(CONFIG.antispam.timeout / 60000)}m`), true);
-            } catch {}
-            spamCache.delete(key);
-            return;
-        }
-    }
-
-    // ── Activity XP ──
-    if (CONFIG.activity.enabled && !message.content.startsWith(CONFIG.prefix) && message.content.length > 2) {
-        const data = getActivity(message.guild.id, message.author.id);
-        data.messages++;
-        await giveXP(message.guild, message.member, CONFIG.activity.xpPerMessage);
-    }
-
-    // ── Prefix commands ──
-    if (!message.content.startsWith(CONFIG.prefix)) return;
-    const args = message.content.slice(CONFIG.prefix.length).trim().split(/\s+/);
-    const cmd = args.shift().toLowerCase();
-
-    if (cmd === 'ping') {
-        const sent = await message.reply({ embeds: [createEmbed('info', '🏓 Pinging...')] });
-        sent.edit({ embeds: [createEmbed('success', '🏓 Pong!', `**Latency:** \`${sent.createdTimestamp - message.createdTimestamp}ms\`\n**API:** \`${Math.round(client.ws.ping)}ms\``)] });
-    } else if (cmd === 'ai' || cmd === 'ask') {
-        if (!CONFIG.ai.enabled) return;
-        const prompt = args.join(' ');
-        if (!prompt) return message.reply({ embeds: [createEmbed('error', '❌ Missing Prompt', 'Usage: `!ai <your question>`')] });
-        await message.channel.sendTyping().catch(() => {});
-        const reply = await askAI(message.author.id, message.author.username, prompt);
-        const chunks = reply.match(/[\s\S]{1,1900}/g) || [reply];
-        for (const c of chunks) {
-            await message.reply({ embeds: [createEmbed('premium', '🤖 AI Reply', c).setAuthor({ name: message.author.username, iconURL: message.author.displayAvatarURL() })] }).catch(() => {});
-        }
-    } else if (cmd === 'rank') {
-        const target = message.mentions.users.first() || message.author;
-        const data = getActivity(message.guild.id, target.id);
-        const need = xpForLevel(data.level);
-        const embed = createEmbed('premium', `📊 ${target.username}'s Rank`,
-            `**Level:** ${data.level}\n**XP:** ${data.xp} / ${need}\n\`${progressBar(data.xp, need)}\`\n\n**Total XP:** ${data.totalXp}\n**Messages:** ${data.messages}\n**Voice Minutes:** ${data.voiceMinutes}`)
-            .setThumbnail(target.displayAvatarURL());
-        await message.reply({ embeds: [embed] });
-    } else if (cmd === 'leaderboard' || cmd === 'lb') {
-        const entries = [...userXP.entries()]
-            .filter(([k]) => k.startsWith(message.guild.id + '-'))
-            .sort((a, b) => b[1].totalXp - a[1].totalXp)
-            .slice(0, CONFIG.activity.leaderboardSize);
-
-        if (!entries.length) return message.reply({ embeds: [createEmbed('info', '📊 Leaderboard', 'No data yet!')] });
-
-        const medals = ['🥇', '🥈', '🥉'];
-        const desc = await Promise.all(entries.map(async ([key, data], i) => {
-            const userId = key.split('-')[1];
-            const u = await client.users.fetch(userId).catch(() => null);
-            const prefix = medals[i] || `**${i + 1}.**`;
-            return `${prefix} ${u ? u.username : 'Unknown'} — **Lvl ${data.level}** (${data.totalXp} XP)`;
-        }));
-        await message.reply({ embeds: [createEmbed('premium', '🏆 Server Leaderboard', desc.join('\n'))] });
-    }
-});
-
-// ═══════════════════════════════════════════════════════════
-//  MESSAGE DELETE (snipe)
-// ═══════════════════════════════════════════════════════════
-client.on('messageDelete', (message) => {
-    if (!message.guild || message.author?.bot) return;
-    snipes.set(message.channel.id, {
-        content: message.content || '[No content]',
-        author: message.author,
-        timestamp: Date.now(),
+  // ---- Anti-Link / Invite ----
+  if (cfg.antiLink.enabled && !hasRole(m, cfg.antiLink.allowedRoles)) {
+    const hasInvite = cfg.antiLink.antiInvite && containsInvite(message.content);
+    const urls = extractUrls(message.content);
+    const hasBadLink = urls.some(u => {
+      const host = (() => { try { return new URL(u.startsWith('http') ? u : 'https://' + u).hostname.toLowerCase(); } catch { return ''; } })();
+      return !cfg.antiLink.allowlist.some(a => host.endsWith(a));
     });
+    if (hasInvite || hasBadLink) {
+      try { await message.delete(); } catch {}
+      const w = await message.channel.send({ embeds: [em('🚫 Link Blocked', `${message.author}, ${cfg.antiLink.warnMsg}`, C.error)] });
+      setTimeout(() => w.delete().catch(() => {}), 4000);
+      return sendLog(message.guild, em('🚫 Link Removed',
+        `**User:** ${message.author.tag}\n**Channel:** ${message.channel}\n**Content:** \`\`\`${message.content.slice(0, 200)}\`\`\``, C.warning));
+    }
+  }
+
+  // ---- Bad Words ----
+  if (cfg.badWords.enabled && cfg.badWords.list.length) {
+    const lower = message.content.toLowerCase();
+    if (cfg.badWords.list.some(w => lower.includes(w))) {
+      try { await message.delete(); } catch {}
+      const w = await message.channel.send({ embeds: [em('🚫 Language', `${message.author}, watch your language!`, C.error)] });
+      setTimeout(() => w.delete().catch(() => {}), 4000);
+      return sendLog(message.guild, em('🚫 Bad Word',
+        `**User:** ${message.author.tag}\n**Content:** \`\`\`${message.content.slice(0, 200)}\`\`\``, C.warning));
+    }
+  }
+
+  // ---- Anti-Caps ----
+  if (cfg.antiCaps.enabled && message.content.length >= cfg.antiCaps.minLength) {
+    if (capsRatio(message.content) >= cfg.antiCaps.threshold) {
+      try { await message.delete(); } catch {}
+      const w = await message.channel.send({ embeds: [em('🔠 Anti-Caps', `${message.author}, please reduce caps!`, C.warning)] });
+      setTimeout(() => w.delete().catch(() => {}), 3000);
+      return;
+    }
+  }
+
+  // ---- Anti-Spam ----
+  if (!cfg.antiSpam.enabled) return;
+  const now = Date.now();
+  const key = `${message.guild.id}:${message.author.id}`;
+  const arr = (spamCache.get(key) || []).filter(t => now - t < cfg.antiSpam.window);
+  arr.push(now);
+  spamCache.set(key, arr);
+
+  if (arr.length >= cfg.antiSpam.limit) {
+    const punishMs = cfg.antiSpam.timeout * (cfg.antiSpam.escalate ? Math.ceil(arr.length / cfg.antiSpam.limit) : 1);
+    try { await m.timeout(punishMs, 'Spam detected'); } catch {}
+    try { await message.channel.bulkDelete(arr.length, true); } catch {}
+    spamCache.delete(key);
+    const w = await message.channel.send({ embeds: [em('⚠️ Anti-Spam',
+      `**${message.author.tag}** timed out for spam.\nDuration: \`${Math.round(punishMs / 60000)} min\``, C.error)] });
+    setTimeout(() => w.delete().catch(() => {}), 5000);
+    return sendLog(message.guild, em('⚠️ Spam Triggered',
+      `**User:** ${message.author.tag}\n**Count:** ${arr.length}`, C.error), true);
+  }
 });
 
-// ═══════════════════════════════════════════════════════════
-//  ANTI-NUKE EVENTS
-// ═══════════════════════════════════════════════════════════
-client.on('channelDelete', async (channel) => {
-    if (!CONFIG.antinuke.enabled || !channel.guild) return;
-    const logs = await channel.guild.fetchAuditLogs({ type: 12, limit: 1 }).catch(() => null);
-    const entry = logs?.entries.first();
-    if (!entry || Date.now() - entry.createdTimestamp > 10000) return;
-    await handleNuke(channel.guild, entry.executor.id, 'channelDelete', CONFIG.antinuke.channelDelete, 'Mass channel deletion');
+// ================== XP ==================
+async function handleXP(message) {
+  const gid = message.guild.id, uid = message.author.id;
+  const data = S.getXP.get(gid, uid) || { xp: 0, level: 0, last_message: 0, voice_minutes: 0 };
+  const now = Date.now();
+  if (now - data.last_message < cfg.xp.cooldown) return;
+  if (cfg.xp.antiFarm && message.content.length < 3) return;
+
+  const gained = randInt(cfg.xp.min, cfg.xp.max);
+  const newXP = data.xp + gained;
+  let newLevel = data.level;
+  while (newXP >= totalXPFor(newLevel + 1)) newLevel++;
+
+  S.upsertXP.run(gid, uid, newXP, newLevel, now, data.voice_minutes || 0);
+
+  if (newLevel > data.level) {
+    const rw = cfg.xp.roleRewards.find(r => r.level === newLevel);
+    if (rw) {
+      const role = message.guild.roles.cache.find(x => x.name.toLowerCase() === rw.role.toLowerCase());
+      if (role) message.member.roles.add(role).catch(() => {});
+    }
+    const ch = cfg.xp.levelUpChannel
+      ? await findChannel(message.guild, cfg.xp.levelUpChannel)
+      : message.channel;
+    if (ch) ch.send({ content: cfg.xp.levelUpMessage.replace('{user}', `${message.author}`).replace('{level}', newLevel) }).catch(() => {});
+  }
+}
+
+// ================== ANTI-NUKE ==================
+function trackNuke(gid, type, limit) {
+  const now = Date.now();
+  const d = nukeCache.get(gid) || { channels: [], roles: [], bans: [], kicks: [] };
+  const f = (d[type] || []).filter(t => now - t < cfg.antiNuke.window);
+  f.push(now);
+  d[type] = f;
+  nukeCache.set(gid, d);
+  return f.length >= limit;
+}
+
+async function punishNuker(guild, entry, type) {
+  try {
+    const executor = entry?.executor;
+    if (!executor || executor.id === guild.ownerId || executor.id === client.user.id) return;
+    const m = await guild.members.fetch(executor.id).catch(() => null);
+    if (!m) return;
+    // Remove dangerous roles
+    const dangerous = m.roles.cache.filter(r => r.permissions.has(PermissionsBitField.Flags.Administrator) && r.editable);
+    for (const r of dangerous.values()) await m.roles.remove(r).catch(() => {});
+    await m.ban({ reason: `Anti-Nuke: ${type}` }).catch(() => {});
+    await sendLog(guild, em('🚨 ANTI-NUKE TRIGGERED',
+      `**Executor:** ${executor.tag} (\`${executor.id}\`)\n**Action:** ${type}\n**Status:** Banned & Roles Removed`, C.error), true);
+  } catch (e) { console.error(e); }
+}
+
+client.on('channelDelete', async ch => {
+  if (!cfg.antiNuke.enabled || !ch.guild) return;
+  if (trackNuke(ch.guild.id, 'channels', cfg.antiNuke.channelLimit)) {
+    const logs = await ch.guild.fetchAuditLogs({ type: 12, limit: 1 }).catch(() => null);
+    await punishNuker(ch.guild, logs?.entries.first(), 'Channel Delete');
+  }
 });
 
-client.on('channelCreate', async (channel) => {
-    if (!CONFIG.antinuke.enabled || !channel.guild) return;
-    const logs = await channel.guild.fetchAuditLogs({ type: 10, limit: 1 }).catch(() => null);
-    const entry = logs?.entries.first();
-    if (!entry || Date.now() - entry.createdTimestamp > 10000) return;
-    await handleNuke(channel.guild, entry.executor.id, 'channelCreate', CONFIG.antinuke.channelCreate, 'Mass channel creation');
-});
-
-client.on('roleDelete', async (role) => {
-    if (!CONFIG.antinuke.enabled || !role.guild) return;
+client.on('roleDelete', async role => {
+  if (!cfg.antiNuke.enabled) return;
+  if (trackNuke(role.guild.id, 'roles', cfg.antiNuke.roleLimit)) {
     const logs = await role.guild.fetchAuditLogs({ type: 32, limit: 1 }).catch(() => null);
-    const entry = logs?.entries.first();
-    if (!entry || Date.now() - entry.createdTimestamp > 10000) return;
-    await handleNuke(role.guild, entry.executor.id, 'roleDelete', CONFIG.antinuke.roleDelete, 'Mass role deletion');
+    await punishNuker(role.guild, logs?.entries.first(), 'Role Delete');
+  }
 });
 
-client.on('roleCreate', async (role) => {
-    if (!CONFIG.antinuke.enabled || !role.guild) return;
-    const logs = await role.guild.fetchAuditLogs({ type: 30, limit: 1 }).catch(() => null);
-    const entry = logs?.entries.first();
-    if (!entry || Date.now() - entry.createdTimestamp > 10000) return;
-    await handleNuke(role.guild, entry.executor.id, 'roleCreate', CONFIG.antinuke.roleCreate, 'Mass role creation');
-});
-
-client.on('guildBanAdd', async (ban) => {
-    if (!CONFIG.antinuke.enabled) return;
+client.on('guildBanAdd', async ban => {
+  if (!cfg.antiNuke.enabled) return;
+  if (trackNuke(ban.guild.id, 'bans', cfg.antiNuke.banLimit)) {
     const logs = await ban.guild.fetchAuditLogs({ type: 22, limit: 1 }).catch(() => null);
-    const entry = logs?.entries.first();
-    if (!entry || Date.now() - entry.createdTimestamp > 10000) return;
-    await handleNuke(ban.guild, entry.executor.id, 'ban', CONFIG.antinuke.banLimit, 'Mass banning');
+    await punishNuker(ban.guild, logs?.entries.first(), 'Mass Ban');
+  }
 });
 
-client.on('guildMemberRemove', async (member) => {
-    if (!CONFIG.antinuke.enabled) return;
-    const logs = await member.guild.fetchAuditLogs({ type: 20, limit: 1 }).catch(() => null);
-    const entry = logs?.entries.first();
-    if (!entry || entry.target?.id !== member.id || Date.now() - entry.createdTimestamp > 10000) return;
-    await handleNuke(member.guild, entry.executor.id, 'kick', CONFIG.antinuke.kickLimit, 'Mass kicking');
+client.on('guildMemberRemove', async m => {
+  if (!cfg.antiNuke.enabled) return;
+  const logs = await m.guild.fetchAuditLogs({ type: 20, limit: 1 }).catch(() => null);
+  const e = logs?.entries.first();
+  if (!e || e.target?.id !== m.id || Date.now() - e.createdTimestamp > 5000) return;
+  if (trackNuke(m.guild.id, 'kicks', cfg.antiNuke.kickLimit)) {
+    await punishNuker(m.guild, e, 'Mass Kick');
+  }
 });
 
-client.on('webhooksUpdate', async (channel) => {
-    if (!CONFIG.antinuke.enabled) return;
-    const logs = await channel.guild.fetchAuditLogs({ type: 50, limit: 1 }).catch(() => null);
-    const entry = logs?.entries.first();
-    if (!entry || Date.now() - entry.createdTimestamp > 10000) return;
-    await handleNuke(channel.guild, entry.executor.id, 'webhook', CONFIG.antinuke.webhookLimit, 'Mass webhook creation');
-});
-
-// ═══════════════════════════════════════════════════════════
-//  VOICE SESSION TRACKING
-// ═══════════════════════════════════════════════════════════
-client.on('voiceStateUpdate', (oldState, newState) => {
-    if (!CONFIG.activity.enabled) return;
-    const member = newState.member || oldState.member;
-    if (!member || member.user.bot) return;
-
-    if (!oldState.channelId && newState.channelId) {
-        voiceSessions.set(member.id, Date.now());
-    } else if (oldState.channelId && !newState.channelId) {
-        voiceSessions.delete(member.id);
-    }
-});
-
-// ═══════════════════════════════════════════════════════════
-//  WELCOME / GOODBYE / AUTOROLE
-// ═══════════════════════════════════════════════════════════
-client.on('guildMemberAdd', async (member) => {
-    if (CONFIG.features.autoRole && CONFIG.roles.auto) {
-        const r = member.guild.roles.cache.get(CONFIG.roles.auto);
-        if (r) member.roles.add(r).catch(() => {});
-    }
-    if (CONFIG.features.welcome && CONFIG.channels.welcome) {
-        const ch = member.guild.channels.cache.get(CONFIG.channels.welcome);
-        if (ch) {
-            const embed = createEmbed('success', `🎉 Welcome to ${member.guild.name}!`,
-                `Hey ${member}, welcome!\n\n**Member #${member.guild.memberCount}**\n**Account:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`)
-                .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 512 }));
-            ch.send({ content: `${member}`, embeds: [embed] }).catch(() => {});
-        }
-    }
-    sendLog(member.guild, createEmbed('info', '📥 Member Joined',
-        `**User:** ${member.user.tag}\n**ID:** \`${member.id}\``));
-});
-
-client.on('guildMemberRemove', async (member) => {
-    if (CONFIG.features.goodbye && CONFIG.channels.goodbye) {
-        const ch = member.guild.channels.cache.get(CONFIG.channels.goodbye);
-        if (ch) {
-            ch.send({ embeds: [createEmbed('error', `👋 Goodbye, ${member.user.tag}`,
-                `**${member.user.tag}** left. **Members:** ${member.guild.memberCount}`)
-                .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))] }).catch(() => {});
-        }
-    }
-});
-
-// ═══════════════════════════════════════════════════════════
-//  INTERACTIONS
-// ═══════════════════════════════════════════════════════════
-client.on('interactionCreate', async (interaction) => {
-    // ── Buttons ──
-    if (interaction.isButton()) {
-        const id = interaction.customId;
-
-        if (id.startsWith('ticket_open_')) return openTicket(interaction, id.replace('ticket_open_', ''));
-        if (id === 'ticket_close') return closeTicket(interaction);
-        if (id === 'ticket_claim') {
-            if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageChannels))
-                return interaction.reply({ embeds: [createEmbed('error', '❌ Denied', 'Staff only.')], ephemeral: true });
-            return interaction.reply({ embeds: [createEmbed('success', '✋ Claimed', `By ${interaction.user}`)] });
-        }
-        if (id === 'verify_btn') {
-            if (!CONFIG.roles.verify) return interaction.reply({ content: 'Verify role not set', ephemeral: true });
-            const role = interaction.guild.roles.cache.get(CONFIG.roles.verify);
-            if (!role) return interaction.reply({ content: 'Role not found', ephemeral: true });
-            if (interaction.member.roles.cache.has(role.id))
-                return interaction.reply({ embeds: [createEmbed('info', '✅ Already Verified', 'You already have it.')], ephemeral: true });
-            await interaction.member.roles.add(role);
-            return interaction.reply({ embeds: [createEmbed('success', '✅ Verified!', 'Access granted.')], ephemeral: true });
-        }
-        if (id.startsWith('gw_join_')) {
-            const msgId = id.replace('gw_join_', '');
-            const gw = giveaways.get(msgId);
-            if (!gw || gw.ended) return interaction.reply({ content: 'Giveaway ended.', ephemeral: true });
-            if (gw.entries.includes(interaction.user.id))
-                return interaction.reply({ content: 'Already entered!', ephemeral: true });
-            gw.entries.push(interaction.user.id);
-            return interaction.reply({ content: `✅ Entered! Total: **${gw.entries.length}**`, ephemeral: true });
-        }
-        return;
-    }
-
-    if (!interaction.isChatInputCommand()) return;
-    const { commandName, guild, member } = interaction;
-    const reply = (e) => interaction.reply({ embeds: [e] }).catch(() => {});
-    const replyE = (e) => interaction.reply({ embeds: [e], ephemeral: true }).catch(() => {});
-
-    const isMod = member.permissions.has(PermissionsBitField.Flags.ModerateMembers) ||
-        member.permissions.has(PermissionsBitField.Flags.KickMembers) ||
-        member.permissions.has(PermissionsBitField.Flags.BanMembers) ||
-        member.permissions.has(PermissionsBitField.Flags.Administrator);
-
-    const requireMod = () => { if (!isMod) { replyE(createEmbed('error', '❌ Denied', 'Moderation permissions required.')); return false; } return true; };
-    const requireAdmin = () => { if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) { replyE(createEmbed('error', '❌ Denied', 'Admin only.')); return false; } return true; };
-
-    try {
-        switch (commandName) {
-
-            case 'ping': {
-                const t = Date.now();
-                await interaction.deferReply();
-                await interaction.editReply({ embeds: [createEmbed('success', '🏓 Pong!',
-                    `**Bot:** \`${Date.now() - t}ms\`\n**API:** \`${Math.round(client.ws.ping)}ms\`\n**Uptime:** <t:${Math.floor((Date.now() - client.uptime) / 1000)}:R>`)] });
-                break;
-            }
-
-            case 'help': {
-                const embed = createEmbed('primary', `📖 ${CONFIG.botName} — Help`,
-                    `**Prefix:** \`${CONFIG.prefix}\` • **Slash:** \`/\`\n\n` +
-                    `**🤖 AI Chat**\n> \`/ai\` \`/ai-reset\` \`/ai-status\` \`!ai <msg>\`\n\n` +
-                    `**📊 Activity**\n> \`/rank\` \`/leaderboard\` \`/activity-stats\`\n\n` +
-                    `**🛡️ Protection**\n> \`/antispam\` \`/antinuke\` \`/antilink\` \`/security\`\n\n` +
-                    `**🔨 Moderation**\n> \`/kick\` \`/ban\` \`/unban\` \`/timeout\` \`/untimeout\`\n> \`/warn\` \`/warnings\` \`/clearwarns\` \`/purge\` \`/slowmode\`\n> \`/lock\` \`/unlock\` \`/nickname\` \`/role\` \`/nuke\` \`/snipe\`\n\n` +
-                    `**🎫 Tickets**\n> \`/ticket-panel\` \`/ticket-close\`\n\n` +
-                    `**🎉 Giveaways**\n> \`/giveaway\` \`/reroll\` \`/end-giveaway\`\n\n` +
-                    `**🛠️ Utilities**\n> \`/poll\` \`/embed\` \`/say\` \`/announce\` \`/dm\` \`/verify-panel\``)
-                    .setThumbnail(client.user.displayAvatarURL());
-                await reply(embed);
-                break;
-            }
-
-            case 'serverinfo': {
-                const g = guild;
-                await reply(createEmbed('info', `🏠 ${g.name}`,
-                    `**Owner:** <@${g.ownerId}>\n**Members:** ${g.memberCount}\n**Channels:** ${g.channels.cache.size}\n**Roles:** ${g.roles.cache.size}\n**Boosts:** ${g.premiumSubscriptionCount}\n**Created:** <t:${Math.floor(g.createdTimestamp / 1000)}:R>`)
-                    .setThumbnail(g.iconURL({ dynamic: true, size: 512 })));
-                break;
-            }
-
-            case 'userinfo': {
-                const t = interaction.options.getUser('user') || interaction.user;
-                const m = await guild.members.fetch(t.id).catch(() => null);
-                const act = getActivity(guild.id, t.id);
-                await reply(createEmbed('info', `👤 ${t.tag}`,
-                    `**ID:** \`${t.id}\`\n**Bot:** ${t.bot ? 'Yes' : 'No'}\n**Created:** <t:${Math.floor(t.createdTimestamp / 1000)}:R>\n` +
-                    (m ? `**Joined:** <t:${Math.floor(m.joinedTimestamp / 1000)}:R>\n**Top Role:** ${m.roles.highest}\n` : '') +
-                    `**Level:** ${act.level}\n**Total XP:** ${act.totalXp}`)
-                    .setThumbnail(t.displayAvatarURL({ dynamic: true, size: 512 })));
-                break;
-            }
-
-            case 'avatar': {
-                const t = interaction.options.getUser('user') || interaction.user;
-                await reply(createEmbed('primary', `🖼️ ${t.tag}'s Avatar`, `[Download](${t.displayAvatarURL({ size: 4096 })})`)
-                    .setImage(t.displayAvatarURL({ dynamic: true, size: 4096 })));
-                break;
-            }
-
-            case 'botinfo': {
-                await reply(createEmbed('premium', `🤖 ${CONFIG.botName}`,
-                    `**Servers:** ${client.guilds.cache.size}\n**Users:** ${client.users.cache.size}\n**Ping:** \`${Math.round(client.ws.ping)}ms\`\n**Uptime:** <t:${Math.floor((Date.now() - client.uptime) / 1000)}:R>\n**Node:** ${process.version}\n\n**🤖 AI:** ${CONFIG.ai.enabled ? '✅' : '❌'}\n**📊 Activity:** ${CONFIG.activity.enabled ? '✅' : '❌'}\n**🛡️ Anti-Nuke:** ${CONFIG.antinuke.enabled ? '✅' : '❌'}`)
-                    .setThumbnail(client.user.displayAvatarURL()));
-                break;
-            }
-
-            // ═══════ AI ═══════
-            case 'ai': {
-                if (!CONFIG.ai.enabled) return replyE(createEmbed('error', '❌ Disabled', 'AI chat is disabled.'));
-                const prompt = interaction.options.getString('prompt');
-                const cd = aiCooldowns.get(interaction.user.id) || 0;
-                if (Date.now() < cd) {
-                    const left = Math.ceil((cd - Date.now()) / 1000);
-                    return replyE(createEmbed('warning', '⏳ Cooldown', `Wait **${left}s**.`));
-                }
-                aiCooldowns.set(interaction.user.id, Date.now() + CONFIG.ai.cooldown * 1000);
-                await interaction.deferReply();
-                const r = await askAI(interaction.user.id, interaction.user.username, prompt);
-                const chunks = r.match(/[\s\S]{1,1900}/g) || [r];
-                await interaction.editReply({ embeds: [createEmbed('premium', '🤖 AI Reply', chunks[0])
-                    .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })] });
-                for (let i = 1; i < chunks.length; i++) {
-                    await interaction.followUp({ embeds: [createEmbed('premium', null, chunks[i])] }).catch(() => {});
-                }
-                break;
-            }
-
-            case 'ai-reset': {
-                aiHistory.delete(interaction.user.id);
-                await replyE(createEmbed('success', '🧹 AI Memory Reset', 'Your conversation history has been cleared.'));
-                break;
-            }
-
-            case 'ai-status': {
-                if (!CONFIG.ai.enabled) return replyE(createEmbed('error', '🤖 AI Chat', 'Status: ❌ Disabled'));
-                const hasKey = !!CONFIG.ai.apiKey && CONFIG.ai.apiKey !== 'sk-your-openai-api-key';
-                await replyE(createEmbed('premium', '🤖 AI Chat Status',
-                    `**Enabled:** ✅\n**Model:** \`${CONFIG.ai.model}\`\n**API Key:** ${hasKey ? '✅ Set' : '❌ Missing'}\n**Cooldown:** ${CONFIG.ai.cooldown}s\n**History Size:** 20 msgs\n**Trigger Prefix:** \`${CONFIG.ai.triggerPrefix}\``));
-                break;
-            }
-
-            // ═══════ ACTIVITY ═══════
-            case 'rank': {
-                const t = interaction.options.getUser('user') || interaction.user;
-                const data = getActivity(guild.id, t.id);
-                const need = xpForLevel(data.level);
-                const all = [...userXP.entries()].filter(([k]) => k.startsWith(guild.id + '-')).sort((a, b) => b[1].totalXp - a[1].totalXp);
-                const pos = all.findIndex(([k]) => k === `${guild.id}-${t.id}`) + 1;
-                await reply(createEmbed('premium', `📊 ${t.username}'s Rank`,
-                    `**Rank:** #${pos || '?'} / ${all.length}\n**Level:** ${data.level}\n**XP:** ${data.xp} / ${need}\n\`${progressBar(data.xp, need, 20)}\`\n\n**Total XP:** ${data.totalXp}\n**Messages:** ${data.messages}\n**Voice Minutes:** ${data.voiceMinutes}`)
-                    .setThumbnail(t.displayAvatarURL({ dynamic: true, size: 512 })));
-                break;
-            }
-
-            case 'leaderboard': {
-                const entries = [...userXP.entries()]
-                    .filter(([k]) => k.startsWith(guild.id + '-'))
-                    .sort((a, b) => b[1].totalXp - a[1].totalXp)
-                    .slice(0, CONFIG.activity.leaderboardSize);
-                if (!entries.length) return replyE(createEmbed('info', '📊 Leaderboard', 'No data yet!'));
-                const medals = ['🥇', '🥈', '🥉'];
-                const lines = [];
-                for (let i = 0; i < entries.length; i++) {
-                    const [key, data] = entries[i];
-                    const uid = key.split('-')[1];
-                    const u = await client.users.fetch(uid).catch(() => null);
-                    lines.push(`${medals[i] || `**${i + 1}.**`} ${u ? u.username : 'Unknown'} — **Lvl ${data.level}** (${data.totalXp} XP)`);
-                }
-                await reply(createEmbed('premium', '🏆 Server Leaderboard', lines.join('\n')));
-                break;
-            }
-
-            case 'activity-stats': {
-                const t = interaction.options.getUser('user') || interaction.user;
-                const data = getActivity(guild.id, t.id);
-                await reply(createEmbed('info', `📈 ${t.username}'s Activity`,
-                    `**Messages Sent:** ${data.messages}\n**Voice Minutes:** ${data.voiceMinutes}\n**Total XP:** ${data.totalXp}\n**Current Level:** ${data.level}\n**Current XP:** ${data.xp}`));
-                break;
-            }
-
-            case 'xp-add': {
-                if (!requireAdmin()) return;
-                const t = interaction.options.getUser('user');
-                const amt = interaction.options.getInteger('amount');
-                const data = getActivity(guild.id, t.id);
-                data.xp += amt; data.totalXp += amt;
-                while (data.xp >= xpForLevel(data.level)) { data.xp -= xpForLevel(data.level); data.level++; }
-                await reply(createEmbed('success', '✅ XP Added', `**+${amt}** XP → ${t.tag} (Now Lvl **${data.level}**)`));
-                break;
-            }
-
-            case 'xp-remove': {
-                if (!requireAdmin()) return;
-                const t = interaction.options.getUser('user');
-                const amt = interaction.options.getInteger('amount');
-                const data = getActivity(guild.id, t.id);
-                data.xp = Math.max(0, data.xp - amt);
-                data.totalXp = Math.max(0, data.totalXp - amt);
-                await reply(createEmbed('success', '✅ XP Removed', `**-${amt}** XP from ${t.tag}`));
-                break;
-            }
-
-            case 'xp-reset': {
-                if (!requireAdmin()) return;
-                for (const [k] of userXP) if (k.startsWith(guild.id + '-')) userXP.delete(k);
-                await reply(createEmbed('success', '🧹 XP Reset', 'All XP in this server has been cleared.'));
-                break;
-            }
-
-            // ═══════ MODERATION ═══════
-            case 'kick': {
-                if (!requireMod()) return;
-                const t = interaction.options.getMember('user');
-                const r = interaction.options.getString('reason') || 'No reason';
-                if (!t) return replyE(createEmbed('error', '❌ Not Found', 'Member not found.'));
-                if (!t.kickable) return replyE(createEmbed('error', '❌ Cannot Kick', 'Cannot kick.'));
-                await t.kick(`${interaction.user.tag}: ${r}`);
-                await reply(createEmbed('success', '👢 Kicked', `**User:** ${t.user.tag}\n**Mod:** ${interaction.user}\n**Reason:** ${r}`));
-                sendLog(guild, createEmbed('warning', '👢 Kick', `**User:** ${t.user.tag}\n**Mod:** ${interaction.user}\n**Reason:** ${r}`), true);
-                break;
-            }
-
-            case 'ban': {
-                if (!requireMod()) return;
-                const u = interaction.options.getUser('user');
-                const r = interaction.options.getString('reason') || 'No reason';
-                const d = interaction.options.getInteger('delete_days') || 0;
-                const tm = await guild.members.fetch(u.id).catch(() => null);
-                if (tm && !tm.bannable) return replyE(createEmbed('error', '❌ Cannot Ban', 'Cannot ban.'));
-                await guild.members.ban(u.id, { reason: `${interaction.user.tag}: ${r}`, deleteMessageSeconds: d * 86400 });
-                await reply(createEmbed('success', '🔨 Banned', `**User:** ${u.tag}\n**Mod:** ${interaction.user}\n**Reason:** ${r}`));
-                sendLog(guild, createEmbed('error', '🔨 Ban', `**User:** ${u.tag}\n**Mod:** ${interaction.user}`), true);
-                break;
-            }
-
-            case 'unban': {
-                if (!requireMod()) return;
-                const id = interaction.options.getString('user_id');
-                const bans = await guild.bans.fetch().catch(() => null);
-                const b = bans?.get(id);
-                if (!b) return replyE(createEmbed('error', '❌ Not Banned', 'User not banned.'));
-                await guild.members.unban(id, `By ${interaction.user.tag}`);
-                await reply(createEmbed('success', '✅ Unbanned', `**User:** ${b.user.tag}`));
-                break;
-            }
-
-            case 'timeout': {
-                if (!requireMod()) return;
-                const t = interaction.options.getMember('user');
-                const m = interaction.options.getInteger('minutes');
-                const r = interaction.options.getString('reason') || 'No reason';
-                if (!t) return replyE(createEmbed('error', '❌ Not Found', 'Member not found.'));
-                if (!t.moderatable) return replyE(createEmbed('error', '❌ Cannot', 'Cannot timeout.'));
-                await t.timeout(m * 60000, `${interaction.user.tag}: ${r}`);
-                await reply(createEmbed('success', '⏰ Timed Out', `**User:** ${t.user.tag}\n**Duration:** ${m}m`));
-                break;
-            }
-
-            case 'untimeout': {
-                if (!requireMod()) return;
-                const t = interaction.options.getMember('user');
-                if (!t || !t.isCommunicationDisabled()) return replyE(createEmbed('error', '❌ Not Timed Out', 'User is not timed out.'));
-                await t.timeout(null, `By ${interaction.user.tag}`);
-                await reply(createEmbed('success', '✅ Untimed Out', `**User:** ${t.user.tag}`));
-                break;
-            }
-
-            case 'warn': {
-                if (!requireMod()) return;
-                const u = interaction.options.getUser('user');
-                const r = interaction.options.getString('reason');
-                const key = `${guild.id}-${u.id}`;
-                const list = warns.get(key) || [];
-                list.push({ reason: r, by: interaction.user.tag, at: Date.now() });
-                warns.set(key, list);
-                await reply(createEmbed('warning', '⚠️ Warning', `**User:** ${u.tag}\n**Reason:** ${r}\n**Total:** ${list.length}/${CONFIG.maxWarns}\n\`${progressBar(list.length, CONFIG.maxWarns)}\``));
-                u.send({ embeds: [createEmbed('warning', `⚠️ Warned in ${guild.name}`, `**Reason:** ${r}`)] }).catch(() => {});
-                break;
-            }
-
-            case 'warnings': {
-                if (!requireMod()) return;
-                const u = interaction.options.getUser('user');
-                const list = warns.get(`${guild.id}-${u.id}`) || [];
-                if (!list.length) return reply(createEmbed('info', '📭 No Warnings', `**${u.tag}** has none.`));
-                const desc = list.map((w, i) => `**${i + 1}.** ${w.reason}\n> ${w.by} • <t:${Math.floor(w.at / 1000)}:R>`).join('\n\n');
-                await reply(createEmbed('warning', `⚠️ Warnings (${list.length})`, desc));
-                break;
-            }
-
-            case 'clearwarns': {
-                if (!requireMod()) return;
-                const u = interaction.options.getUser('user');
-                warns.delete(`${guild.id}-${u.id}`);
-                await reply(createEmbed('success', '🧹 Cleared', `Warnings cleared for **${u.tag}**.`));
-                break;
-            }
-
-            case 'purge': {
-                if (!member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return replyE(createEmbed('error', '❌ Denied', 'Need Manage Messages.'));
-                const amt = interaction.options.getInteger('amount');
-                await interaction.deferReply({ ephemeral: true });
-                const del = await interaction.channel.bulkDelete(amt, true).catch(() => null);
-                if (!del) return interaction.editReply({ embeds: [createEmbed('error', '❌ Failed', 'Could not delete.')] });
-                await interaction.editReply({ embeds: [createEmbed('success', '🧹 Purged', `Deleted **${del.size}** messages.`)] });
-                break;
-            }
-
-            case 'slowmode': {
-                if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) return replyE(createEmbed('error', '❌ Denied', 'Need Manage Channels.'));
-                const s = interaction.options.getInteger('seconds');
-                await interaction.channel.setRateLimitPerUser(s);
-                await reply(createEmbed('success', '🐌 Slowmode', s === 0 ? 'Disabled.' : `Set to **${s}s**.`));
-                break;
-            }
-
-            case 'lock': {
-                if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) return replyE(createEmbed('error', '❌ Denied', 'Need Manage Channels.'));
-                await interaction.channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
-                await reply(createEmbed('success', '🔒 Locked', 'Channel locked.'));
-                break;
-            }
-
-            case 'unlock': {
-                if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) return replyE(createEmbed('error', '❌ Denied', 'Need Manage Channels.'));
-                await interaction.channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null });
-                await reply(createEmbed('success', '🔓 Unlocked', 'Channel unlocked.'));
-                break;
-            }
-
-            case 'nickname': {
-                if (!requireMod()) return;
-                const t = interaction.options.getMember('user');
-                const n = interaction.options.getString('nickname') || null;
-                if (!t) return replyE(createEmbed('error', '❌ Not Found', 'Member not found.'));
-                if (!t.manageable) return replyE(createEmbed('error', '❌ Cannot', 'Cannot manage.'));
-                await t.setNickname(n, `By ${interaction.user.tag}`);
-                await reply(createEmbed('success', '📝 Nickname', `**User:** ${t.user.tag}\n**New:** ${n || '(reset)'}`));
-                break;
-            }
-
-            case 'role': {
-                if (!member.permissions.has(PermissionsBitField.Flags.ManageRoles)) return replyE(createEmbed('error', '❌ Denied', 'Need Manage Roles.'));
-                const t = interaction.options.getMember('user');
-                const r = interaction.options.getRole('role');
-                const a = interaction.options.getString('action');
-                if (!t) return replyE(createEmbed('error', '❌ Not Found', 'Member not found.'));
-                if (a === 'add') await t.roles.add(r); else await t.roles.remove(r);
-                await reply(createEmbed('success', `✅ Role ${a === 'add' ? 'Added' : 'Removed'}`, `**User:** ${t.user.tag}\n**Role:** ${r}`));
-                break;
-            }
-
-            case 'snipe': {
-                const s = snipes.get(interaction.channel.id);
-                if (!s) return replyE(createEmbed('error', '📭 Nothing', 'No deleted messages.'));
-                await reply(createEmbed('info', '🎯 Sniped',
-                    `**Author:** ${s.author.tag}\n**Deleted:** <t:${Math.floor(s.timestamp / 1000)}:R>\n\n\`\`\`${s.content.slice(0, 1000)}\`\`\``));
-                break;
-            }
-
-            case 'nuke': {
-                if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) return replyE(createEmbed('error', '❌ Denied', 'Need Manage Channels.'));
-                const pos = interaction.channel.position;
-                const clone = await interaction.channel.clone();
-                await interaction.channel.delete().catch(() => {});
-                await clone.setPosition(pos).catch(() => {});
-                clone.send({ embeds: [createEmbed('success', '💥 Nuked', `Fresh start by ${interaction.user}`)] }).catch(() => {});
-                break;
-            }
-
-            // ═══════ TOGGLES ═══════
-            case 'antinuke':
-            case 'antispam':
-            case 'antilink': {
-                if (!requireAdmin()) return;
-                const st = interaction.options.getString('state') === 'on';
-                if (commandName === 'antinuke') CONFIG.antinuke.enabled = st;
-                if (commandName === 'antispam') CONFIG.antispam.enabled = st;
-                if (commandName === 'antilink') CONFIG.link.enabled = st;
-                await reply(createEmbed('success', '🛡️ Updated', `**${commandName}** → **${st ? 'ENABLED' : 'DISABLED'}**`));
-                break;
-            }
-
-            case 'security': {
-                await reply(createEmbed('premium', '🔒 Security Status',
-                    `**🛡️ Anti-Spam:** ${CONFIG.antispam.enabled ? '✅ ON' : '❌ OFF'}\n` +
-                    `**🚨 Anti-Nuke:** ${CONFIG.antinuke.enabled ? '✅ ON' : '❌ OFF'}\n` +
-                    `**🔗 Anti-Link:** ${CONFIG.link.enabled ? '✅ ON' : '❌ OFF'}\n` +
-                    `**🔠 Anti-Caps:** ${CONFIG.antiCaps.enabled ? '✅ ON' : '❌ OFF'}\n` +
-                    `**🔨 Punishment:** ${CONFIG.antinuke.punishment}\n` +
-                    `**🤖 AI Chat:** ${CONFIG.ai.enabled ? '✅ ON' : '❌ OFF'}\n` +
-                    `**📊 Activity:** ${CONFIG.activity.enabled ? '✅ ON' : '❌ OFF'}`));
-                break;
-            }
-
-            // ═══════ TICKETS ═══════
-            case 'ticket-panel': {
-                if (!requireAdmin()) return;
-                const embed = createEmbed('primary', '🎫 Support Tickets',
-                    `Click a button below to open a ticket!\n\n> 🛠️ **Support** — General help\n> 💰 **Billing** — Payment issues\n> 🚨 **Report** — Report a user\n> 💡 **Suggestion** — Share ideas`);
-                const row1 = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('ticket_open_support').setLabel('Support').setEmoji('🛠️').setStyle(ButtonStyle.Primary),
-                    new ButtonBuilder().setCustomId('ticket_open_billing').setLabel('Billing').setEmoji('💰').setStyle(ButtonStyle.Success),
-                );
-                const row2 = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('ticket_open_report').setLabel('Report').setEmoji('🚨').setStyle(ButtonStyle.Danger),
-                    new ButtonBuilder().setCustomId('ticket_open_suggestion').setLabel('Suggestion').setEmoji('💡').setStyle(ButtonStyle.Secondary),
-                );
-                await interaction.channel.send({ embeds: [embed], components: [row1, row2] });
-                await replyE(createEmbed('success', '✅ Panel Sent', 'Ticket panel posted.'));
-                break;
-            }
-
-            case 'ticket-close': {
-                if (!tickets.has(interaction.channel.id)) return replyE(createEmbed('error', '❌ Not Ticket', 'Not a ticket.'));
-                await interaction.reply({ embeds: [createEmbed('info', '🔒 Closing', 'Ticket closes in 5s...')] });
-                setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
-                break;
-            }
-
-            // ═══════ GIVEAWAY ═══════
-            case 'giveaway': {
-                if (!requireAdmin()) return;
-                const prize = interaction.options.getString('prize');
-                const mins = interaction.options.getInteger('minutes');
-                const winners = interaction.options.getInteger('winners') || 1;
-                const endsAt = Date.now() + mins * 60000;
-                const embed = createEmbed('premium', '🎉 GIVEAWAY 🎉',
-                    `**Prize:** ${prize}\n**Winners:** ${winners}\n**Ends:** <t:${Math.floor(endsAt / 1000)}:R>\n**Hosted by:** ${interaction.user}\n\n**Entries:** 0`);
-                const msg = await interaction.channel.send({ embeds: [embed], components: [
-                    new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId('gw_join_placeholder').setLabel('Join').setEmoji('🎉').setStyle(ButtonStyle.Success)
-                    )
-                ]});
-                await msg.edit({ components: [
-                    new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId(`gw_join_${msg.id}`).setLabel('Join').setEmoji('🎉').setStyle(ButtonStyle.Success)
-                    )
-                ]});
-                giveaways.set(msg.id, { prize, winners, endsAt, entries: [], channelId: interaction.channel.id, host: interaction.user.id, messageId: msg.id, ended: false });
-                await replyE(createEmbed('success', '🎉 Giveaway Started', `Ends <t:${Math.floor(endsAt / 1000)}:R>`));
-                break;
-            }
-
-            case 'reroll': {
-                if (!requireAdmin()) return;
-                const id = interaction.options.getString('message_id');
-                const gw = giveaways.get(id);
-                if (!gw || !gw.entries.length) return replyE(createEmbed('error', '❌ No Entries', 'No entries found.'));
-                const w = gw.entries[Math.floor(Math.random() * gw.entries.length)];
-                await reply(createEmbed('success', '🎉 Reroll Winner', `New winner: <@${w}> for **${gw.prize}**`));
-                break;
-            }
-
-            case 'end-giveaway': {
-                if (!requireAdmin()) return;
-                const id = interaction.options.getString('message_id');
-                const gw = giveaways.get(id);
-                if (!gw) return replyE(createEmbed('error', '❌ Not Found', 'Giveaway not found.'));
-                await endGiveaway(gw);
-                await replyE(createEmbed('success', '✅ Ended', 'Giveaway ended.'));
-                break;
-            }
-
-            // ═══════ UTILITIES ═══════
-            case 'poll': {
-                const q = interaction.options.getString('question');
-                const optsStr = interaction.options.getString('options');
-                const opts = optsStr ? optsStr.split('|').map((s) => s.trim()).slice(0, 5) : ['Yes', 'No'];
-                const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
-                let desc = `**${q}**\n\n`;
-                opts.forEach((o, i) => { desc += `${emojis[i]} ${o}\n`; });
-                const msg = await interaction.channel.send({ embeds: [createEmbed('info', '📊 Poll', desc)] });
-                for (let i = 0; i < opts.length; i++) await msg.react(emojis[i]).catch(() => {});
-                await replyE(createEmbed('success', '✅ Poll Created', 'Poll posted.'));
-                break;
-            }
-
-            case 'embed': {
-                if (!requireAdmin()) return;
-                const title = interaction.options.getString('title');
-                const desc = interaction.options.getString('description');
-                const ch = interaction.options.getChannel('channel') || interaction.channel;
-                await ch.send({ embeds: [createEmbed('primary', title, desc)] });
-                await replyE(createEmbed('success', '✅ Sent', `Embed sent to ${ch}.`));
-                break;
-            }
-
-            case 'say': {
-                if (!requireMod()) return;
-                const m = interaction.options.getString('message');
-                await interaction.channel.send(m);
-                await replyE(createEmbed('success', '✅ Sent', 'Message sent.'));
-                break;
-            }
-
-            case 'announce': {
-                if (!requireAdmin()) return;
-                const title = interaction.options.getString('title');
-                const m = interaction.options.getString('message');
-                await interaction.channel.send({ content: '@everyone', embeds: [createEmbed('premium', `📢 ${title}`, m)] });
-                await replyE(createEmbed('success', '✅ Announced', 'Announcement sent.'));
-                break;
-            }
-
-            case 'dm': {
-                if (!requireAdmin()) return;
-                const u = interaction.options.getUser('user');
-                const m = interaction.options.getString('message');
-                await u.send({ embeds: [createEmbed('info', `📩 Message from ${guild.name}`, m)] }).catch(() => {});
-                await replyE(createEmbed('success', '✅ DM Sent', `Sent to ${u.tag}`));
-                break;
-            }
-
-            case 'verify-panel': {
-                if (!requireAdmin()) return;
-                const embed = createEmbed('success', '✅ Verification',
-                    'Click the button below to verify and gain access!');
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('verify_btn').setLabel('Verify').setEmoji('✅').setStyle(ButtonStyle.Success)
-                );
-                await interaction.channel.send({ embeds: [embed], components: [row] });
-                await replyE(createEmbed('success', '✅ Panel Sent', 'Verification panel posted.'));
-                break;
-            }
-        }
-    } catch (e) {
-        console.error(`Error [${commandName}]:`, e);
-        if (interaction.deferred || interaction.replied) {
-            interaction.editReply({ embeds: [createEmbed('error', '❌ Error', `\`${e.message}\``)] }).catch(() => {});
-        } else {
-            interaction.reply({ embeds: [createEmbed('error', '❌ Error', `\`${e.message}\``)], ephemeral: true }).catch(() => {});
-        }
-    }
-});
-
-// ═══════════════════════════════════════════════════════════
-//  TICKETS
-// ═══════════════════════════════════════════════════════════
-async function openTicket(interaction, type) {
-    const guild = interaction.guild;
-    const category = CONFIG.channels.ticketCategory ? guild.channels.cache.get(CONFIG.channels.ticketCategory) : null;
-    const existing = guild.channels.cache.find((c) => c.name === `ticket-${interaction.user.username.toLowerCase()}`);
-    if (existing) return interaction.reply({ embeds: [createEmbed('error', '❌ Already Open', `You already have: ${existing}`)], ephemeral: true });
-
-    await interaction.deferReply({ ephemeral: true });
-
-    const ch = await guild.channels.create({
-        name: `ticket-${interaction.user.username}`.slice(0, 100),
-        type: ChannelType.GuildText,
-        parent: category?.id,
-        permissionOverwrites: [
-            { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-            { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-            { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels] },
-        ],
-    }).catch(() => null);
-
-    if (!ch) return interaction.editReply({ embeds: [createEmbed('error', '❌ Failed', 'Could not create ticket.')] });
-
-    tickets.set(ch.id, { owner: interaction.user.id, type, createdAt: Date.now() });
-
-    const embed = createEmbed('primary', `🎫 ${type.toUpperCase()} Ticket`,
-        `Hello ${interaction.user}, thanks for opening a ticket!\n\n**Type:** ${type}\n**Support will be with you shortly.**`);
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('ticket_close').setLabel('Close').setEmoji('🔒').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('ticket_claim').setLabel('Claim').setEmoji('✋').setStyle(ButtonStyle.Success),
-    );
-    await ch.send({ content: `${interaction.user}`, embeds: [embed], components: [row] });
-
-    if (CONFIG.channels.ticketLog) {
-        const logCh = guild.channels.cache.get(CONFIG.channels.ticketLog);
-        logCh?.send({ embeds: [createEmbed('info', '🎫 Ticket Opened',
-            `**User:** ${interaction.user.tag}\n**Type:** ${type}\n**Channel:** ${ch}`)] }).catch(() => {});
-    }
-
-    await interaction.editReply({ embeds: [createEmbed('success', '✅ Ticket Created', `Your ticket: ${ch}`)] });
-}
-
-async function closeTicket(interaction) {
-    if (!tickets.has(interaction.channel.id)) return interaction.reply({ embeds: [createEmbed('error', '❌ Not Ticket', 'Not a ticket.')], ephemeral: true });
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-        const t = tickets.get(interaction.channel.id);
-        if (t.owner !== interaction.user.id) return interaction.reply({ embeds: [createEmbed('error', '❌ Denied', 'Only owner or staff.')], ephemeral: true });
-    }
-    await interaction.reply({ embeds: [createEmbed('info', '🔒 Closing', 'Ticket closes in 5s...')] });
-    if (CONFIG.channels.ticketLog) {
-        const logCh = interaction.guild.channels.cache.get(CONFIG.channels.ticketLog);
-        logCh?.send({ embeds: [createEmbed('warning', '🔒 Ticket Closed', `**By:** ${interaction.user.tag}\n**Channel:** #${interaction.channel.name}`)] }).catch(() => {});
-    }
-    setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
-}
-
-// ═══════════════════════════════════════════════════════════
-//  GIVEAWAY CHECKER
-// ═══════════════════════════════════════════════════════════
-async function checkGiveaways() {
+// ================== RAID DETECTION ==================
+client.on('guildMemberAdd', async (m) => {
+  // Auto-role
+  if (cfg.verify.autoRoleEnabled) {
+    for (const id of cfg.verify.autoRoles) await m.roles.add(id).catch(() => {});
+  }
+  if (cfg.verify.enabled) {
+    const unv = m.guild.roles.cache.find(r => r.name.toLowerCase() === cfg.verify.unverifiedRole.toLowerCase());
+    if (unv) await m.roles.add(unv).catch(() => {});
+  }
+
+  // Raid detection
+  if (cfg.raid.enabled) {
+    const key = m.guild.id;
     const now = Date.now();
-    for (const [id, gw] of giveaways) {
-        if (gw.ended || now < gw.endsAt) continue;
-        await endGiveaway(gw);
+    const arr = (raidCache.get(key) || []).filter(t => now - t < cfg.raid.window);
+    arr.push(now);
+    raidCache.set(key, arr);
+    if (arr.length >= cfg.raid.threshold) {
+      raidCache.delete(key);
+      // Lockdown: deny @everyone SendMessages in all text channels
+      const everyone = m.guild.roles.everyone;
+      const changed = [];
+      for (const ch of m.guild.channels.cache.values()) {
+        if (ch.type === ChannelType.GuildText && ch.permissionsFor(everyone)?.has(PermissionsBitField.Flags.SendMessages)) {
+          try {
+            await ch.permissionOverwrites.edit(everyone, { SendMessages: false });
+            changed.push(ch);
+          } catch {}
+        }
+      }
+      await sendLog(m.guild, em('🚨 RAID DETECTED - LOCKDOWN', `Triggered: ${arr.length} joins in ${cfg.raid.window / 1000}s`, C.error), true);
+      setTimeout(async () => {
+        for (const ch of changed) await ch.permissionOverwrites.edit(everyone, { SendMessages: null }).catch(() => {});
+        await sendLog(m.guild, em('🔓 Lockdown Lifted', `Auto unlocked after ${cfg.raid.duration / 1000}s`, C.success), true);
+      }, cfg.raid.duration);
     }
+  }
+
+  // Welcome
+  if (cfg.welcome.enabled) {
+    const ch = await findChannel(m.guild, cfg.welcome.channel);
+    if (ch) {
+      const msg = cfg.welcome.message.replace('{user}', `${m}`).replace('{server}', m.guild.name).replace('{count}', m.guild.memberCount);
+      const e = em(`👋 Welcome!`, msg, C.success)
+        .setThumbnail(m.user.displayAvatarURL({ size: 256 }))
+        .addFields(
+          { name: '📅 Account Created', value: `<t:${Math.floor(m.user.createdTimestamp / 1000)}:R>`, inline: true },
+          { name: '👥 Member Count', value: `\`${m.guild.memberCount}\``, inline: true },
+        );
+      if (cfg.welcome.image) e.setImage(cfg.welcome.image);
+      ch.send({ content: `${m}`, embeds: [e] }).catch(() => {});
+    }
+  }
+
+  // Log
+  if (cfg.logs.memberJoin) {
+    sendLog(m.guild, em('📥 Member Joined', `**User:** ${m.user.tag} (\`${m.id}\`)\n**Created:** <t:${Math.floor(m.user.createdTimestamp / 1000)}:R>\n**Count:** \`${m.guild.memberCount}\``, C.success));
+  }
+});
+
+// ================== GOODBYE ==================
+client.on('guildMemberRemove', async (m) => {
+  if (cfg.goodbye.enabled) {
+    const ch = await findChannel(m.guild, cfg.goodbye.channel);
+    if (ch) {
+      const msg = cfg.goodbye.message.replace('{user}', m.user.tag).replace('{server}', m.guild.name).replace('{count}', m.guild.memberCount);
+      const e = em('👋 Goodbye', msg, C.error)
+        .setThumbnail(m.user.displayAvatarURL({ size: 256 }));
+      if (cfg.goodbye.image) e.setImage(cfg.goodbye.image);
+      ch.send({ embeds: [e] }).catch(() => {});
+    }
+  }
+  if (cfg.logs.memberLeave) {
+    sendLog(m.guild, em('📤 Member Left', `**User:** ${m.user.tag} (\`${m.id}\`)\n**Joined:** ${m.joinedTimestamp ? `<t:${Math.floor(m.joinedTimestamp / 1000)}:R>` : 'Unknown'}`, C.warning));
+  }
+});
+
+// ================== LOGGING EVENTS ==================
+client.on('messageDelete', async (msg) => {
+  if (!cfg.logs.msgDelete || !msg.guild || msg.author?.bot) return;
+  if (!msg.content && !msg.attachments.size) return;
+  const e = em('🗑️ Message Deleted', null, C.error)
+    .addFields(
+      { name: 'Author', value: `${msg.author.tag}`, inline: true },
+      { name: 'Channel', value: `${msg.channel}`, inline: true },
+      { name: 'Content', value: (msg.content || '*[no text]*').slice(0, 1024) },
+    );
+  if (msg.attachments.size) e.addFields({ name: 'Attachments', value: msg.attachments.map(a => a.name).join(', ').slice(0, 1024) });
+  sendLog(msg.guild, e);
+});
+
+client.on('messageUpdate', async (oldM, newM) => {
+  if (!cfg.logs.msgEdit || !oldM.guild || oldM.author?.bot) return;
+  if (oldM.content === newM.content) return;
+  sendLog(oldM.guild, em('✏️ Message Edited', null, C.warning)
+    .setURL(newM.url)
+    .addFields(
+      { name: 'Author', value: `${oldM.author.tag}`, inline: true },
+      { name: 'Channel', value: `${oldM.channel}`, inline: true },
+      { name: 'Before', value: (oldM.content || '*empty*').slice(0, 1024) },
+      { name: 'After', value: (newM.content || '*empty*').slice(0, 1024) },
+    ));
+});
+
+client.on('voiceStateUpdate', (oldS, newS) => {
+  if (!cfg.logs.voice) return;
+  const m = newS.member;
+  if (!m || m.user.bot) return;
+  if (!oldS.channel && newS.channel) {
+    sendLog(newS.guild, em('🔊 Voice Joined', `${m.user.tag} joined ${newS.channel}`, C.success));
+  } else if (oldS.channel && !newS.channel) {
+    sendLog(oldS.guild, em('🔇 Voice Left', `${m.user.tag} left ${oldS.channel}`, C.warning));
+  } else if (oldS.channel?.id !== newS.channel?.id) {
+    sendLog(newS.guild, em('🔀 Voice Moved', `${m.user.tag}: ${oldS.channel} → ${newS.channel}`, C.info));
+  }
+});
+
+client.on('guildMemberUpdate', async (oldM, newM) => {
+  if (!cfg.logs.roleChanges) return;
+  const added = newM.roles.cache.filter(r => !oldM.roles.cache.has(r.id));
+  const removed = oldM.roles.cache.filter(r => !newM.roles.cache.has(r.id));
+  if (added.size) sendLog(newM.guild, em('➕ Role Added', `${newM.user.tag} → ${added.map(r => r).join(', ')}`, C.success));
+  if (removed.size) sendLog(newM.guild, em('➖ Role Removed', `${newM.user.tag} → ${removed.map(r => r).join(', ')}`, C.warning));
+});
+
+// ================== SERVER STATS ==================
+function startStatsLoop() {
+  const update = async () => {
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        const humans = guild.members.cache.filter(m => !m.user.bot).size;
+        const bots = guild.memberCount - humans;
+        const setCh = async (template, count) => {
+          if (!template) return;
+          const name = template.replace('{count}', count);
+          const ch = guild.channels.cache.find(c => c.name.match(/^(📊|👥|🤖)/) && c.type === ChannelType.GuildVoice);
+          // Instead of matching, try find by prefix
+        };
+        const updateCh = async (template, count) => {
+          if (!template) return;
+          const baseName = template.replace('{count}', '').trim();
+          const ch = guild.channels.cache.find(c =>
+            c.type === ChannelType.GuildVoice && c.name.includes(baseName.slice(0, 3)));
+          if (!ch) return;
+          const newName = template.replace('{count}', count);
+          if (ch.name !== newName) await ch.setName(newName).catch(() => {});
+        };
+        await updateCh(cfg.stats.members, guild.memberCount);
+        await updateCh(cfg.stats.humans, humans);
+        await updateCh(cfg.stats.bots, bots);
+      } catch (e) { /* ignore */ }
+    }
+  };
+  update();
+  setInterval(update, cfg.stats.interval);
 }
 
-async function endGiveaway(gw) {
-    gw.ended = true;
-    const ch = client.channels.cache.get(gw.channelId);
-    if (!ch) return;
-    const msg = await ch.messages.fetch(gw.messageId).catch(() => null);
-    if (!msg) return;
-    const winners = [];
-    const pool = [...gw.entries];
-    for (let i = 0; i < gw.winners && pool.length; i++) {
-        const idx = Math.floor(Math.random() * pool.length);
-        winners.push(pool.splice(idx, 1)[0]);
-    }
-    await msg.edit({ embeds: [createEmbed('premium', '🎉 GIVEAWAY ENDED 🎉',
-        `**Prize:** ${gw.prize}\n**Winners:** ${winners.length ? winners.map((w) => `<@${w}>`).join(', ') : 'None 😢'}\n**Total Entries:** ${gw.entries.length}`)],
-        components: [] }).catch(() => {});
-    if (winners.length) await ch.send({ content: `🎉 Congratulations ${winners.map((w) => `<@${w}>`).join(', ')}! You won **${gw.prize}**!` });
-    else await ch.send({ content: `😢 No entries for **${gw.prize}**` });
-    giveaways.delete(gw.messageId);
+// ================== GIVEAWAY PERSISTENCE ==================
+async function restoreGiveaways() {
+  const active = S.getActiveGiveaways.all();
+  for (const g of active) {
+    if (g.ends_at <= Date.now()) { await endGiveaway(g.message_id); continue; }
+    setTimeout(() => endGiveaway(g.message_id), g.ends_at - Date.now());
+  }
 }
 
-// ═══════════════════════════════════════════════════════════
-//  PROCESS GUARDS
-// ═══════════════════════════════════════════════════════════
-process.on('unhandledRejection', (e) => console.error('Unhandled:', e));
-process.on('uncaughtException', (e) => console.error('Uncaught:', e));
+async function endGiveaway(messageId) {
+  const g = S.getGiveaway.get(messageId);
+  if (!g || g.ended) return;
+  const guild = client.guilds.cache.get(g.guild_id);
+  if (!guild) return;
+  const ch = await guild.channels.fetch(g.channel_id).catch(() => null);
+  if (!ch) { S.endGiveaway.run(messageId); return; }
+  const msg = await ch.messages.fetch(messageId).catch(() => null);
+  const entries = JSON.parse(g.entries || '[]');
+  S.endGiveaway.run(messageId);
 
-// ═══════════════════════════════════════════════════════════
-//  LOGIN
-// ═══════════════════════════════════════════════════════════
-if (!CONFIG.token) { console.error('❌ DISCORD_TOKEN missing'); process.exit(1); }
-client.login(CONFIG.token);
+  let winners = [];
+  if (entries.length) {
+    const pool = [...entries];
+    for (let i = 0; i < Math.min(g.winners, pool.length); i++) {
+      const idx = Math.floor(Math.random() * pool.length);
+      winners.push(pool.splice(idx, 1)[0]);
+    }
+  }
+
+  const e = em('🎉 GIVEAWAY ENDED 🎉', null, C.primary)
+    .setDescription(`**Prize:** ${g.prize}\n**Winners:** ${winners.length ? winners.map(w => `<@${w}>`).join(', ') : 'No valid entries'}\n**Host:** <@${g.host_id}>`);
+
+  if (msg) {
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('giveaway_join').setLabel('Ended').setStyle(ButtonStyle.Secondary).setDisabled(true).setEmoji('🎉'),
+    );
+    await msg.edit({ embeds: [e], components: [row] }).catch(() => {});
+  }
+  ch.send({ content: winners.length ? `🎉 Congrats ${winners.map(w => `<@${w}>`).join(', ')}! You won **${g.prize}**!` : '😢 No valid entries.' }).catch(() => {});
+  const logCh = await findChannel(guild, cfg.giveaway.logChannel);
+  if (logCh) logCh.send({ embeds: [em('🎁 Giveaway Ended', `**Prize:** ${g.prize}\n**Winners:** ${winners.map(w => `<@${w}>`).join(', ') || 'None'}`, C.info)] }).catch(() => {});
+}
+
+// ================== ERROR HANDLING ==================
+process.on('unhandledRejection', e => console.error('Unhandled:', e));
+process.on('uncaughtException', e => console.error('Uncaught:', e));
+
+process.on('SIGINT', () => {
+  console.log('\n👋 Shutting down gracefully...');
+  db.close();
+  client.destroy();
+  process.exit(0);
+});
+
+// ================== LOGIN ==================
+if (!cfg.token) { console.error('❌ BOT_TOKEN missing in .env'); process.exit(1); }
+client.login(cfg.token).catch(e => { console.error('Login failed:', e.message); process.exit(1); });
