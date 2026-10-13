@@ -1,12 +1,14 @@
 {
-  "name": "hoster-bot-v3",
-  "version": "3.0.0",
+  "name": "guardian-bot",
+  "version": "2.0.0",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "better-sqlite3": "^11.3.0",
+    "canvas": "^2.11.2"
   }
 }
